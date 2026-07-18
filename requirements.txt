@@ -1,0 +1,72 @@
+# ============================================================
+# BAYMAX AI – Requirements
+# Python 3.11 required
+# ============================================================
+
+# --- Core API ---
+fastapi
+uvicorn[standard]
+python-multipart
+websockets
+httpx
+
+# --- Configuration & Utilities ---
+pydantic
+pydantic-settings
+python-dotenv
+loguru
+
+# --- ML Core ---
+torch
+torchvision
+torchaudio
+numpy
+scipy
+Pillow
+opencv-python
+
+# --- Speech Recognition ---
+faster-whisper
+sounddevice
+soundfile
+webrtcvad
+
+# --- Emotion Recognition ---
+deepface
+mediapipe
+tf-keras
+
+# --- Face Embeddings ---
+face-recognition
+
+# --- LLM ---
+transformers
+accelerate
+bitsandbytes
+sentencepiece
+tokenizers
+
+# --- RAG & Embeddings ---
+sentence-transformers
+chromadb
+langchain-text-splitters
+
+# --- Memory / DB ---
+SQLAlchemy
+aiosqlite
+
+# --- TTS ---
+TTS
+
+# --- Data Processing ---
+pandas
+datasets
+
+# --- Testing ---
+pytest
+pytest-asyncio
+httpx
+
+# --- Dev Tools ---
+rich
+tqdm
