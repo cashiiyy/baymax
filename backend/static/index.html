@@ -3,89 +3,112 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>B.A.Y.M.A.X. v1 – Intelligence First Health Assistant</title>
+    <title>B.A.Y.M.A.X. v1 – Local Multimodal AI Health Assistant</title>
     <link rel="stylesheet" href="/static/style.css">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet">
 </head>
 <body>
+    <!-- Top Header -->
     <header class="header">
         <div class="brand">
-            <div class="brand-icon">B</div>
+            <div class="brand-logo">
+                <span>+</span>
+            </div>
             <div>
-                <div class="brand-title">B.A.Y.M.A.X. v1</div>
-                <div class="brand-subtitle">Multimodal Health Assistant</div>
+                <h1 class="brand-title">B.A.Y.M.A.X. <span class="brand-version">v1</span></h1>
+                <p class="brand-tagline">Multimodal Health & First-Aid Assistant</p>
             </div>
         </div>
-        <div class="network-badge">
-            <span class="network-dot"></span>
-            Local Network (Tailscale IP: <strong id="ipDisplay">100.89.251.123</strong>)
+
+        <div class="header-status">
+            <span class="status-indicator"></span>
+            <span class="status-text">Server Orchestrator Active</span>
         </div>
     </header>
 
-    <div class="app-container">
+    <!-- Main Container -->
+    <div class="app-layout">
+        <!-- Sidebar Navigation & Tools -->
         <aside class="sidebar">
-            <div class="info-card">
-                <h3>🩺 Quick Medical Topics</h3>
-                <div class="quick-topics">
-                    <button class="topic-tag" onclick="quickQuery('What are the first aid steps for burns?')">🔥 Burns First Aid</button>
-                    <button class="topic-tag" onclick="quickQuery('How to perform CPR?')">🫀 CPR Steps</button>
-                    <button class="topic-tag" onclick="quickQuery('Symptoms of Dengue fever')">🦟 Dengue Symptoms</button>
-                    <button class="topic-tag" onclick="quickQuery('How to manage high blood pressure?')">🩺 Hypertension</button>
-                    <button class="topic-tag" onclick="quickQuery('What to do for snake bite?')">🐍 Snake Bite</button>
-                    <button class="topic-tag" onclick="quickQuery('Stress management techniques')">🧘 Mental Wellness</button>
+            <div class="panel">
+                <h2 class="panel-title">
+                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M19 14c1.49-1.46 3-3.21 3-5.5A5.5 5.5 0 0 0 16.5 3c-1.76 0-3 .5-4.5 2-1.5-1.5-2.74-2-4.5-2A5.5 5.5 0 0 0 2 8.5c0 2.3 1.5 4.05 3 5.5l7 7Z"/></svg>
+                    Quick Health Topics
+                </h2>
+                <div class="topic-grid">
+                    <button class="topic-btn" onclick="quickQuery('What are the first aid steps for burns?')">🔥 Burns First Aid</button>
+                    <button class="topic-btn" onclick="quickQuery('How to perform CPR correctly?')">🫀 CPR Protocol</button>
+                    <button class="topic-btn" onclick="quickQuery('What are the symptoms of Dengue fever?')">🦟 Dengue Symptoms</button>
+                    <button class="topic-btn" onclick="quickQuery('How to manage high blood pressure?')">🩺 Hypertension</button>
+                    <button class="topic-btn" onclick="quickQuery('What is the emergency first aid for a snake bite?')">🐍 Snake Bite</button>
+                    <button class="topic-btn" onclick="quickQuery('How to relieve asthma and breathing difficulty?')">🫁 Breathing & Asthma</button>
                 </div>
             </div>
 
-            <div class="info-card">
-                <h3>🎙️ Cloned Voice Speech Output</h3>
-                <p style="font-size: 0.9rem; color: var(--text-secondary); margin-bottom: 10px;">
-                    Enable automatic voice playback using your cloned XTTS voice model.
-                </p>
-                <label style="display: flex; align-items: center; gap: 8px; font-weight: 500; font-size: 0.95rem; cursor: pointer;">
-                    <input type="checkbox" id="autoVoiceToggle" checked> Enable Voice Synthesis (TTS)
-                </label>
-                <audio id="audioPlayer" controls style="width: 100%; margin-top: 12px; display: none;"></audio>
-            </div>
-
-            <div class="info-card">
-                <h3>🖼️ Prescription & OCR Scanner</h3>
-                <p style="font-size: 0.88rem; color: var(--text-secondary); margin-bottom: 10px;">
-                    Upload a prescription or lab report image to extract text.
-                </p>
+            <div class="panel">
+                <h2 class="panel-title">
+                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><path d="m21 15-5-5L5 21"/></svg>
+                    Medical OCR Scanner
+                </h2>
+                <p class="panel-desc">Upload a prescription, lab report, or medical document image to extract text.</p>
                 <input type="file" id="ocrFileInput" accept="image/*" style="display: none;" onchange="handleOCRUpload(event)">
-                <button class="btn btn-primary" style="width: 100%;" onclick="document.getElementById('ocrFileInput').click()">
-                    📄 Upload Medical Document
+                <button class="btn btn-secondary w-full" onclick="document.getElementById('ocrFileInput').click()">
+                    📄 Upload Medical Image
                 </button>
             </div>
         </aside>
 
-        <main class="chat-container">
+        <!-- Main Chat Area -->
+        <main class="chat-wrapper">
             <div class="chat-header">
-                <div>Medical Intelligence & Assistance Engine</div>
-                <div style="font-size: 0.85rem; font-weight: normal; opacity: 0.9;">SQLite Memory + FAISS RAG</div>
+                <div class="chat-header-info">
+                    <span class="chat-title">Baymax Medical Intelligence</span>
+                    <span class="chat-subtitle">Educational Assistance & Symptom Reasoning</span>
+                </div>
+
+                <div class="voice-toggle-wrapper">
+                    <label class="toggle-switch">
+                        <input type="checkbox" id="voiceToggle" checked>
+                        <span class="toggle-slider"></span>
+                    </label>
+                    <span class="voice-label">🔊 Voice Response</span>
+                </div>
             </div>
 
+            <!-- Messages Stream -->
             <div class="chat-messages" id="chatMessages">
-                <div class="disclaimer-banner">
-                    ⚠️ <strong>Notice:</strong> B.A.Y.M.A.X. provides educational guidance and information assistance only, not medical diagnosis. In emergencies, please seek immediate care from a medical professional.
+                <div class="safety-banner">
+                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="m21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3Z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
+                    <span><strong>Educational Notice:</strong> B.A.Y.M.A.X. provides medical information assistance only. In case of severe symptoms or emergency, contact professional healthcare immediately.</span>
                 </div>
 
-                <div class="message assistant">
-                    Hello! I am <strong>B.A.Y.M.A.X.</strong>, your local AI health assistant. How can I assist you with health questions, symptom information, or first-aid guidance today?
+                <div class="msg assistant">
+                    <div class="msg-avatar">B</div>
+                    <div class="msg-content">
+                        Hello! I am <strong>B.A.Y.M.A.X.</strong>, your medical information assistant. How can I help you with health questions, symptoms, or first-aid guidance today?
+                    </div>
                 </div>
             </div>
 
-            <div class="chat-input-area">
-                <button class="btn btn-icon" id="micBtn" title="Voice Input (STT)" onclick="toggleVoiceInput()">🎙️</button>
-                <input type="text" class="chat-input" id="userInput" placeholder="Ask about symptoms, first aid, or medical topics..." onkeypress="handleKeyPress(event)">
-                <button class="btn btn-primary" id="sendBtn" onclick="sendMessage()">Send</button>
+            <!-- Input Bar -->
+            <div class="chat-input-container">
+                <button class="icon-btn" id="micBtn" title="Hold to Speak / Speech Input" onclick="toggleSpeechRecognition()">
+                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2a3 3 0 0 0-3 3v7a3 3 0 0 0 6 0V5a3 3 0 0 0-3-3Z"/><path d="M19 10v2a7 7 0 0 1-14 0v-2"/><line x1="12" y1="19" x2="12" y2="22"/></svg>
+                </button>
+
+                <input type="text" class="chat-input" id="userInput" placeholder="Describe symptoms or ask a health question..." onkeypress="handleKeyPress(event)">
+
+                <button class="btn btn-primary" id="sendBtn" onclick="sendMessage()">
+                    Send
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/></svg>
+                </button>
             </div>
         </main>
     </div>
 
-    <footer class="footer">
-        B.A.Y.M.A.X. v1 – Intelligence First | Operating on Local Tailscale Network 100.89.251.123
-    </footer>
-
+    <!-- Script -->
     <script src="/static/app.js"></script>
 </body>
 </html>
