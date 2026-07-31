@@ -1,0 +1,91 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>B.A.Y.M.A.X. v1 – Intelligence First Health Assistant</title>
+    <link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+    <header class="header">
+        <div class="brand">
+            <div class="brand-icon">B</div>
+            <div>
+                <div class="brand-title">B.A.Y.M.A.X. v1</div>
+                <div class="brand-subtitle">Multimodal Health Assistant</div>
+            </div>
+        </div>
+        <div class="network-badge">
+            <span class="network-dot"></span>
+            Local Network (Tailscale IP: <strong id="ipDisplay">100.89.251.123</strong>)
+        </div>
+    </header>
+
+    <div class="app-container">
+        <aside class="sidebar">
+            <div class="info-card">
+                <h3>🩺 Quick Medical Topics</h3>
+                <div class="quick-topics">
+                    <button class="topic-tag" onclick="quickQuery('What are the first aid steps for burns?')">🔥 Burns First Aid</button>
+                    <button class="topic-tag" onclick="quickQuery('How to perform CPR?')">🫀 CPR Steps</button>
+                    <button class="topic-tag" onclick="quickQuery('Symptoms of Dengue fever')">🦟 Dengue Symptoms</button>
+                    <button class="topic-tag" onclick="quickQuery('How to manage high blood pressure?')">🩺 Hypertension</button>
+                    <button class="topic-tag" onclick="quickQuery('What to do for snake bite?')">🐍 Snake Bite</button>
+                    <button class="topic-tag" onclick="quickQuery('Stress management techniques')">🧘 Mental Wellness</button>
+                </div>
+            </div>
+
+            <div class="info-card">
+                <h3>🎙️ Cloned Voice Speech Output</h3>
+                <p style="font-size: 0.9rem; color: var(--text-secondary); margin-bottom: 10px;">
+                    Enable automatic voice playback using your cloned XTTS voice model.
+                </p>
+                <label style="display: flex; align-items: center; gap: 8px; font-weight: 500; font-size: 0.95rem; cursor: pointer;">
+                    <input type="checkbox" id="autoVoiceToggle" checked> Enable Voice Synthesis (TTS)
+                </label>
+                <audio id="audioPlayer" controls style="width: 100%; margin-top: 12px; display: none;"></audio>
+            </div>
+
+            <div class="info-card">
+                <h3>🖼️ Prescription & OCR Scanner</h3>
+                <p style="font-size: 0.88rem; color: var(--text-secondary); margin-bottom: 10px;">
+                    Upload a prescription or lab report image to extract text.
+                </p>
+                <input type="file" id="ocrFileInput" accept="image/*" style="display: none;" onchange="handleOCRUpload(event)">
+                <button class="btn btn-primary" style="width: 100%;" onclick="document.getElementById('ocrFileInput').click()">
+                    📄 Upload Medical Document
+                </button>
+            </div>
+        </aside>
+
+        <main class="chat-container">
+            <div class="chat-header">
+                <div>Medical Intelligence & Assistance Engine</div>
+                <div style="font-size: 0.85rem; font-weight: normal; opacity: 0.9;">SQLite Memory + FAISS RAG</div>
+            </div>
+
+            <div class="chat-messages" id="chatMessages">
+                <div class="disclaimer-banner">
+                    ⚠️ <strong>Notice:</strong> B.A.Y.M.A.X. provides educational guidance and information assistance only, not medical diagnosis. In emergencies, please seek immediate care from a medical professional.
+                </div>
+
+                <div class="message assistant">
+                    Hello! I am <strong>B.A.Y.M.A.X.</strong>, your local AI health assistant. How can I assist you with health questions, symptom information, or first-aid guidance today?
+                </div>
+            </div>
+
+            <div class="chat-input-area">
+                <button class="btn btn-icon" id="micBtn" title="Voice Input (STT)" onclick="toggleVoiceInput()">🎙️</button>
+                <input type="text" class="chat-input" id="userInput" placeholder="Ask about symptoms, first aid, or medical topics..." onkeypress="handleKeyPress(event)">
+                <button class="btn btn-primary" id="sendBtn" onclick="sendMessage()">Send</button>
+            </div>
+        </main>
+    </div>
+
+    <footer class="footer">
+        B.A.Y.M.A.X. v1 – Intelligence First | Operating on Local Tailscale Network 100.89.251.123
+    </footer>
+
+    <script src="/static/app.js"></script>
+</body>
+</html>

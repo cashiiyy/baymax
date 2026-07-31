@@ -1,0 +1,26 @@
+version: '3.8'
+
+services:
+  baymax-server:
+    build: .
+    container_name: baymax_server
+    ports:
+      - "8000:8000"
+    environment:
+      - TAILSCALE_IP=100.89.251.123
+      - BAYMAX_DB_PATH=/app/data/baymax.db
+    volumes:
+      - ./data:/app/data
+      - ./datasets:/app/datasets
+    restart: unless-stopped
+
+  nginx:
+    image: nginx:alpine
+    container_name: baymax_nginx
+    ports:
+      - "80:80"
+    volumes:
+      - ./nginx/baymax.conf:/etc/nginx/conf.d/default.conf:ro
+    depends_on:
+      - baymax-server
+    restart: unless-stopped
