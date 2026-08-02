@@ -14,7 +14,7 @@ from contextlib import asynccontextmanager
 
 from config import settings
 from app.api.middleware import add_middleware
-from app.api.routes import health, stt, emotion, chat, memory, medical, avatar
+from app.api.routes import health, stt, emotion, chat, memory, medical, avatar, multimodal
 from app.utils.logger import setup_logging, get_logger
 
 # ── Setup Logging ──
@@ -49,8 +49,10 @@ async def lifespan(app: FastAPI):
     log.info("Shutting down BAYMAX AI Server")
     from app.llm.qwen_engine import QwenEngine
     from app.tts.xtts_engine import XTTSEngine
+    from app.utils.ae2_client import ae2_client
     QwenEngine().unload()
     XTTSEngine().unload()
+    await ae2_client.close()  # Close AE2 httpx connection pool
 
 
 # ── Create FastAPI App ──
@@ -72,6 +74,7 @@ app.include_router(chat.router)
 app.include_router(memory.router)
 app.include_router(medical.router)
 app.include_router(avatar.router)
+app.include_router(multimodal.router)
 
 
 if __name__ == "__main__":

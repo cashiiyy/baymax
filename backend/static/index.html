@@ -1,114 +1,239 @@
 <!DOCTYPE html>
 <html lang="en">
+
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>B.A.Y.M.A.X. v1 – Local Multimodal AI Health Assistant</title>
-    <link rel="stylesheet" href="/static/style.css">
+    <title>B.A.Y.M.A.X. v2 – Multimodal AI Health Assistant</title>
+    <meta name="description"
+        content="B.A.Y.M.A.X. — a multimodal AI health assistant combining medical reasoning, voice, vision, and document analysis.">
+
+    <!-- Favicon -->
+    <link rel="icon" type="image/png" href="/static/icon.png">
+    <link rel="apple-touch-icon" href="/static/icon.png">
+
+    <!-- Fonts -->
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-    <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+    <link
+        href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:ital,wght@0,300;0,400;0,500;0,600;0,700;0,800;1,400&display=swap"
+        rel="stylesheet">
+
+    <!-- Stylesheet -->
+    <link rel="stylesheet" href="/static/style.css">
+
+    <!-- AE2 SDK config — set before loading the SDK -->
+    <script>
+        window.BAYMAX_AI2_URL = 'http://100.79.169.64:8001';
+    </script>
 </head>
+
 <body>
-    <!-- Top Header -->
+    <!-- ── Intro Video Overlay ────────────────────────────── -->
+    <div id="introOverlay" class="intro-overlay">
+        <video id="introVideo" src="/static/baymax_intro.mp4" autoplay playsinline></video>
+        <button id="skipIntroBtn" class="skip-intro-btn">Skip Intro</button>
+    </div>
+    <!-- ── Top Header ─────────────────────────────── -->
     <header class="header">
         <div class="brand">
-            <div class="brand-logo">
-                <span>+</span>
+            <div class="brand-logo" title="B.A.Y.M.A.X. AI">
+                <img src="/static/icon.png" alt="BAYMAX"
+                    onerror="this.style.display='none'; this.nextElementSibling.style.display='flex';">
+                <span class="brand-logo-text" style="display:none;">+</span>
             </div>
-            <div>
-                <h1 class="brand-title">B.A.Y.M.A.X. <span class="brand-version">v1</span></h1>
-                <p class="brand-tagline">Multimodal Health & First-Aid Assistant</p>
+            <div class="brand-info">
+                <h1 class="brand-title">
+                    B.A.Y.M.A.X.
+                    <span class="brand-version">v2</span>
+                </h1>
+                <p class="brand-tagline">Multimodal Health &amp; First-Aid Assistant</p>
             </div>
         </div>
 
         <div class="header-status">
-            <span class="status-indicator"></span>
-            <span class="status-text">Server Orchestrator Active</span>
+            <span class="status-indicator" id="backendStatusDot" title="Backend Server Status"></span>
+            <span class="status-text" id="backendStatusText">Backend Active</span>
+            <div class="status-divider"></div>
+            <span class="status-indicator" id="ae2StatusDot"
+                style="background:#9CA3AF; box-shadow: 0 0 0 3px rgba(156,163,175,0.2);"
+                title="AI Engine 2 Status"></span>
+            <span class="status-text" id="ae2StatusText">AE2 Checking…</span>
         </div>
     </header>
 
-    <!-- Main Container -->
+    <!-- ── Main Container ─────────────────────────── -->
     <div class="app-layout">
-        <!-- Sidebar Navigation & Tools -->
+
+        <!-- ── Sidebar ─────────────────────────────── -->
         <aside class="sidebar">
+
+            <!-- Quick Health Topics -->
             <div class="panel">
                 <h2 class="panel-title">
-                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M19 14c1.49-1.46 3-3.21 3-5.5A5.5 5.5 0 0 0 16.5 3c-1.76 0-3 .5-4.5 2-1.5-1.5-2.74-2-4.5-2A5.5 5.5 0 0 0 2 8.5c0 2.3 1.5 4.05 3 5.5l7 7Z"/></svg>
+                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <path
+                            d="M19 14c1.49-1.46 3-3.21 3-5.5A5.5 5.5 0 0 0 16.5 3c-1.76 0-3 .5-4.5 2-1.5-1.5-2.74-2-4.5-2A5.5 5.5 0 0 0 2 8.5c0 2.3 1.5 4.05 3 5.5l7 7Z" />
+                    </svg>
                     Quick Health Topics
                 </h2>
                 <div class="topic-grid">
-                    <button class="topic-btn" onclick="quickQuery('What are the first aid steps for burns?')">🔥 Burns First Aid</button>
-                    <button class="topic-btn" onclick="quickQuery('How to perform CPR correctly?')">🫀 CPR Protocol</button>
-                    <button class="topic-btn" onclick="quickQuery('What are the symptoms of Dengue fever?')">🦟 Dengue Symptoms</button>
-                    <button class="topic-btn" onclick="quickQuery('How to manage high blood pressure?')">🩺 Hypertension</button>
-                    <button class="topic-btn" onclick="quickQuery('What is the emergency first aid for a snake bite?')">🐍 Snake Bite</button>
-                    <button class="topic-btn" onclick="quickQuery('How to relieve asthma and breathing difficulty?')">🫁 Breathing & Asthma</button>
+                    <button class="topic-btn" id="topicBurns"
+                        onclick="quickQuery('What are the first aid steps for burns?')">🔥 Burns First Aid</button>
+                    <button class="topic-btn" id="topicCPR" onclick="quickQuery('How to perform CPR correctly?')">🫀 CPR
+                        Protocol</button>
+                    <button class="topic-btn" id="topicDengue"
+                        onclick="quickQuery('What are the symptoms of Dengue fever?')">🦟 Dengue Symptoms</button>
+                    <button class="topic-btn" id="topicBP" onclick="quickQuery('How to manage high blood pressure?')">🩺
+                        Hypertension</button>
+                    <button class="topic-btn" id="topicSnake"
+                        onclick="quickQuery('What is the emergency first aid for a snake bite?')">🐍 Snake Bite</button>
+                    <button class="topic-btn" id="topicAsthma"
+                        onclick="quickQuery('How to relieve asthma and breathing difficulty?')">🫁 Breathing &amp;
+                        Asthma</button>
                 </div>
             </div>
 
+            <!-- Medical OCR Scanner -->
             <div class="panel">
                 <h2 class="panel-title">
-                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><path d="m21 15-5-5L5 21"/></svg>
+                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <rect x="3" y="3" width="18" height="18" rx="2" />
+                        <path d="m21 15-5-5L5 21" />
+                        <circle cx="8.5" cy="8.5" r="1.5" />
+                    </svg>
                     Medical OCR Scanner
                 </h2>
-                <p class="panel-desc">Upload a prescription, lab report, or medical document image to extract text.</p>
-                <input type="file" id="ocrFileInput" accept="image/*" style="display: none;" onchange="handleOCRUpload(event)">
-                <button class="btn btn-secondary w-full" onclick="document.getElementById('ocrFileInput').click()">
-                    📄 Upload Medical Image
+                <p class="panel-desc">Upload a prescription, lab report, or medical image to extract text and structured
+                    data.</p>
+                <input type="file" id="ocrFileInput" accept="image/*,.pdf" style="display: none;"
+                    onchange="handleOCRUpload(event)">
+                <button class="btn btn-secondary w-full" id="ocrUploadBtn"
+                    onclick="document.getElementById('ocrFileInput').click()">
+                    📄 Upload Medical Document
                 </button>
+                <div id="ocrStatus" style="font-size:0.75rem; margin-top:8px; color: var(--text-muted); display:none;">
+                </div>
             </div>
+
+            <!-- Vision Analysis -->
+            <div class="panel">
+                <h2 class="panel-title">
+                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <circle cx="12" cy="12" r="3" />
+                        <path d="M2 12C2 12 5 5 12 5s10 7 10 7-3 7-10 7S2 12 2 12Z" />
+                    </svg>
+                    Vision Analysis
+                </h2>
+                <p class="panel-desc">Capture a webcam frame for face &amp; emotion context detection via AI Engine 2.
+                </p>
+                <video id="webcamVideo" autoplay muted playsinline></video>
+                <div style="display:flex; gap:6px; flex-wrap:wrap;">
+                    <button class="btn btn-secondary" id="cameraBtn" onclick="toggleCamera()" style="flex:1;">
+                        📷 Start Camera
+                    </button>
+                    <button class="btn btn-secondary" id="captureBtn" onclick="captureAndAnalyse()"
+                        style="flex:1; display:none;">
+                        🔍 Analyse Frame
+                    </button>
+                </div>
+                <div id="visionResult"
+                    style="font-size:0.75rem; margin-top:8px; color:var(--text-muted); display:none;"></div>
+            </div>
+
+            <!-- Wake Word Panel -->
+            <div class="panel">
+                <h2 class="panel-title">
+                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <path d="M12 2a3 3 0 0 0-3 3v7a3 3 0 0 0 6 0V5a3 3 0 0 0-3-3Z" />
+                        <path d="M19 10v2a7 7 0 0 1-14 0v-2" />
+                        <line x1="12" y1="19" x2="12" y2="22" />
+                    </svg>
+                    Wake Word
+                </h2>
+                <p class="panel-desc">Say <strong>"Hey Baymax"</strong> to activate voice input automatically.</p>
+                <button class="btn btn-secondary w-full" id="wakeWordBtn" onclick="toggleWakeWord()">
+                    🎙️ Enable Wake Word
+                </button>
+                <div id="wakeWordStatus"
+                    style="font-size:0.75rem; margin-top:8px; color:var(--text-muted); display:none;"></div>
+            </div>
+
+            <!-- AE2 Components Status (hidden until AE2 responds) -->
+            <div class="panel" id="ae2ComponentsPanel" style="display:none;">
+                <h2 class="panel-title">⚙️ AI Engine 2 Status</h2>
+                <div id="ae2Components" style="font-size:0.75rem; line-height:1.8;"></div>
+            </div>
+
         </aside>
 
-        <!-- Main Chat Area -->
+        <!-- ── Main Chat Area ──────────────────────── -->
         <main class="chat-wrapper">
             <div class="chat-header">
                 <div class="chat-header-info">
                     <span class="chat-title">Baymax Medical Intelligence</span>
-                    <span class="chat-subtitle">Educational Assistance & Symptom Reasoning</span>
+                    <span class="chat-subtitle">Educational Assistance &amp; Symptom Reasoning</span>
                 </div>
 
-                <div class="voice-toggle-wrapper">
-                    <label class="toggle-switch">
-                        <input type="checkbox" id="voiceToggle" checked>
+                <div class="voice-toggle-wrapper" onclick="document.getElementById('voiceToggle').click()">
+                    <label class="toggle-switch" onclick="event.stopPropagation()">
+                        <input type="checkbox" id="voiceToggle" checked onchange="onVoiceToggleChange(this.checked)">
                         <span class="toggle-slider"></span>
                     </label>
-                    <span class="voice-label">🔊 Voice Response</span>
+                    <span class="voice-label" id="voiceLabel">🔊 Voice On</span>
                 </div>
             </div>
 
             <!-- Messages Stream -->
             <div class="chat-messages" id="chatMessages">
-                <div class="safety-banner">
-                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="m21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3Z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
-                    <span><strong>Educational Notice:</strong> B.A.Y.M.A.X. provides medical information assistance only. In case of severe symptoms or emergency, contact professional healthcare immediately.</span>
+                <div class="safety-banner" role="alert">
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <path d="m21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3Z" />
+                        <line x1="12" y1="9" x2="12" y2="13" />
+                        <line x1="12" y1="17" x2="12.01" y2="17" />
+                    </svg>
+                    <span><strong>Educational Notice:</strong> B.A.Y.M.A.X. provides medical information assistance
+                        only. In case of severe symptoms or emergency, contact professional healthcare
+                        immediately.</span>
                 </div>
 
                 <div class="msg assistant">
-                    <div class="msg-avatar">B</div>
+                    <img src="/static/icon.png" class="msg-avatar" alt="Baymax" />
                     <div class="msg-content">
-                        Hello! I am <strong>B.A.Y.M.A.X.</strong>, your medical information assistant. How can I help you with health questions, symptoms, or first-aid guidance today?
+                        Hi , I am BAYMAX, your personal Healthcare companion. How may i help you ?
                     </div>
                 </div>
             </div>
 
             <!-- Input Bar -->
             <div class="chat-input-container">
-                <button class="icon-btn" id="micBtn" title="Hold to Speak / Speech Input" onclick="toggleSpeechRecognition()">
-                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2a3 3 0 0 0-3 3v7a3 3 0 0 0 6 0V5a3 3 0 0 0-3-3Z"/><path d="M19 10v2a7 7 0 0 1-14 0v-2"/><line x1="12" y1="19" x2="12" y2="22"/></svg>
+                <button class="icon-btn" id="micBtn" title="Click to Speak" onclick="toggleMicRecording()">
+                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <path d="M12 2a3 3 0 0 0-3 3v7a3 3 0 0 0 6 0V5a3 3 0 0 0-3-3Z" />
+                        <path d="M19 10v2a7 7 0 0 1-14 0v-2" />
+                        <line x1="12" y1="19" x2="12" y2="22" />
+                    </svg>
                 </button>
 
-                <input type="text" class="chat-input" id="userInput" placeholder="Describe symptoms or ask a health question..." onkeypress="handleKeyPress(event)">
+                <input type="text" class="chat-input" id="userInput"
+                    placeholder="Describe symptoms or ask a health question…" onkeypress="handleKeyPress(event)"
+                    autocomplete="off" spellcheck="true">
 
                 <button class="btn btn-primary" id="sendBtn" onclick="sendMessage()">
                     Send
-                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/></svg>
+                    <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                        stroke-width="2.5">
+                        <line x1="22" y1="2" x2="11" y2="13" />
+                        <polygon points="22 2 15 22 11 13 2 9 22 2" />
+                    </svg>
                 </button>
             </div>
         </main>
     </div>
 
-    <!-- Script -->
+    <!-- SDK + App Scripts -->
+    <script src="/static/baymax-ai2-sdk.js"></script>
     <script src="/static/app.js"></script>
 </body>
+
 </html>

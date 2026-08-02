@@ -1,0 +1,147 @@
+# BAYMAX — Fix All AI Engine 1 Errors & UI Enhancement
+
+## Background
+
+The BAYMAX project has two backends:
+- **`backend/api/main.py`** — The **actual running server** (port 8000) — serves UI, proxies to AE2, calls reasoning_pipeline
+- **`main.py`** (root) — A separate FastAPI app that imports `app/` modules — apparently not in use by the UI
+
+The frontend (`backend/static/`) connects to `backend/api/main.py`.
+
+---
+
+## Root Cause Analysis
+
+### 1. LLM / Chat — **"random hardcoded text"** ✅ Fixable (AI Engine 1)
+- `backend/api/main.py` `/chat` endpoint uses `reasoning_pipeline` from `ai_engine_1/pipeline/reasoning_pipeline.py`
+- `reasoning_pipeline.py` uses `ProductionLLMEngine` which calls **OpenRouter API** using the key in `.env`
+- The `.env` has a valid `OPENROUTER_API_KEY` and `PRIMARY_LLM_MODEL=qwen/qwen-2.5-72b-instruct`
+- **Problem**: OpenRouter call may be failing → triggers **offline fallback** which returns pre-written hardcoded text
+- **Fix**: Debug and ensure OpenRouter API works; improve error visibility in the offline fallback message
+
+### 2. STT / Voice Transcription — **FFmpeg error** ❌ AE2 problem
+- Error: `FFmpeg not found at 'ffmpeg'. Set AE2_AUDIO_FFMPEG_CMD in your environment.`
+- This is 100% an **AI Engine 2** error — AE2 needs FFmpeg installed
+- **AI Engine 1 Fix**: The frontend (`app.js`) tries `ai2.transcribe()` which directly hits AE2; if AE2 is online but fails, we need graceful fallback + better error message in UI
+- **AI Engine 1 Fix**: Add browser-native `SpeechRecognition` fallback when AE2 transcription fails
+
+### 3. Wake Word — **fails to detect** ❌ AE2-dependent
+- Wake word uses `ai2.startWakeWordDetection()` → calls `ai2.transcribe()` in chunks → hits AE2 STT → AE2 FFmpeg error
+- **Fix**: Show clear error, provide browser-native wake word alternative (Web Speech API recognition)
+
+### 4. Vision Analysis — **OpenCV format error** ❌ AE2 problem
+- Error: `OpenCV(5.0.0) ... Unsupported combination of source format (=5), and destination format (=6)`
+- This is AE2's internal image processing issue
+- **AI Engine 1 Fix**: Catch the error properly in `app.js` and show user-friendly error message; add JPEG pre-processing before sending to AE2
+
+### 5. Medical OCR Scanner — **"Error extracting text"** ❌ AE2 problem
+- OCR fails in AE2
+- **AI Engine 1 Fix**: Add better error messaging; fall back to `/proxy/analyse` or show diagnostic info
+
+### 6. TTS / Voice Model — **robotic browser voice** ❌ Partially AE2 + AI Engine 1
+- AE2's XTTS not loaded → falls back to `window.speechSynthesis` (browser robotic voice)
+- **AI Engine 1 Fix**: The local XTTS engine in `app/tts/xtts_engine.py` exists but isn't wired to the `/tts` backend endpoint properly for the UI flow
+- Add a local TTS fallback route in `backend/api/main.py` using the XTTS engine
+
+### 7. Voice Toggle Button — **doesn't work** ✅ CSS/JS bug
+- The toggle is a `<label>` + `<input type="checkbox">` — clicking the label doesn't always propagate
+- **Fix**: Add explicit `change` event listener to `voiceToggle` + ensure `speakText()` checks it correctly
+
+### 8. Icon in header — **missing** ✅ Simple fix
+- Replace the `+` text in `.brand-logo` with `<img src="/static/icon.png">`
+- Need to serve `icon.png` from the static directory
+
+### 9. UI Aesthetics — **upgrade to premium** ✅ CSS rewrite
+- Elevate to premium look: creamy white + crimson red
+- Glassmorphism panels, subtle gradients, micro-animations
+- Better typography, spacing, shadows
+
+---
+
+## Proposed Changes
+
+### AI Engine 1 — Backend Fixes
+
+#### [MODIFY] [main.py (backend/api)](file:///K:/PROJECTS/BAYMAX/backend/api/main.py)
+- Add local TTS fallback endpoint: try AE2, fall back to `app/tts/xtts_engine.py`
+- Add `/proxy/ae2-status` proper route (already exists)
+- Copy icon.png to static directory (already in root)
+
+#### [NEW] Script to copy icon to static
+- Copy `icon.png` → `backend/static/icon.png`
+
+---
+
+### Frontend Fixes
+
+#### [MODIFY] [app.js](file:///K:/PROJECTS/BAYMAX/backend/static/app.js)
+1. **Voice toggle fix**: Add `change` event listener to properly track state
+2. **STT fallback**: If AE2 transcribe fails with FFmpeg error, fall back to browser Web Speech API (`SpeechRecognition`)
+3. **Wake word**: Use browser Web Speech API when AE2 is offline/failing
+4. **Vision error**: Better error message + pre-convert canvas to JPEG before sending
+5. **OCR error**: Better diagnostic message
+6. **TTS**: Try AE2 → try backend `/tts` local route → fallback to browser speech
+7. **LLM status**: Show when offline fallback is being used
+
+#### [MODIFY] [index.html](file:///K:/PROJECTS/BAYMAX/backend/static/index.html)
+- Replace `+` brand logo with `<img src="/static/icon.png">`
+- Add `<link rel="icon">` for browser tab icon
+- Add status banner for AE2 issues with clear messaging
+
+#### [MODIFY] [style.css](file:///K:/PROJECTS/BAYMAX/backend/static/style.css)
+Complete premium UI overhaul:
+- Creamy white background (`#FFF8F5` / `#FFFAF8`)
+- Rich crimson palette with subtle warmth
+- Glassmorphism panels with backdrop-filter
+- Smooth gradient headers and chat bubbles
+- Premium shadows and border treatments
+- Better micro-animations (hover, pulse, slide)
+- Scrollbar styling
+- Status badges styling
+
+---
+
+## AI Engine 2 Prompt (Separate — Errors Not Fixable in AE1)
+
+```
+=== AI ENGINE 2 — FIXES REQUIRED ===
+
+The following errors are occurring in AI Engine 2 and need to be fixed on the AE2 machine:
+
+1. FFmpeg not found:
+   Error: "FFmpeg not found at 'ffmpeg'. Set AE2_AUDIO_FFMPEG_CMD in your environment."
+   Fix: Install FFmpeg on the AE2 machine: `choco install ffmpeg` or `winget install FFmpeg`
+        Then set env var: AE2_AUDIO_FFMPEG_CMD=C:\path\to\ffmpeg.exe
+        Or add to .env: AE2_AUDIO_FFMPEG_CMD=ffmpeg (if in PATH)
+
+2. OpenCV Vision error:
+   Error: "OpenCV(5.0.0) ... Unsupported combination of source format (=5), destination format (=6)"
+   Fix: The image is likely being read in BGRA or RGB format when a BGRA→GRAY or similar filter is applied.
+        In the vision processing code, convert image to BGR before any filters:
+          img = cv2.cvtColor(img, cv2.COLOR_BGRA2BGR)  # before any processing
+        Or downgrade OpenCV: pip install opencv-python==4.9.0.80
+
+3. XTTS / Whisper not loaded:
+   Fix: Ensure TTS model downloads on AE2 startup and XTTS v2 is fully initialized.
+        Check AE2 logs for model download errors.
+
+4. OCR failing:
+   Fix: Ensure Tesseract OCR is installed on the AE2 machine and tesseract is in PATH.
+```
+
+---
+
+## Verification Plan
+
+### Automated
+- Restart `backend/api/main.py` and check `/health` endpoint returns `{"status": "online"}`
+- Test `/chat` endpoint with curl: `curl -X POST http://localhost:8000/chat -H "Content-Type: application/json" -d '{"user_id":1,"query":"what is fever?"}'`
+
+### Manual
+- Open browser, verify icon.png appears in header and tab
+- Send a chat message — verify real AI response (not just hardcoded text)
+- Click Voice Toggle — verify it properly mutes/unmutes
+- Try Mic button — verify STT works (browser fallback) even if AE2 is offline
+- Try Wake Word — verify browser Speech API fallback is used
+- Try OCR upload — verify better error messaging
+- Verify premium UI look with creamy white + red theme

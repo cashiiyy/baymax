@@ -57,6 +57,11 @@ class BaymaxSettings(BaseSettings):
     BAYMAX_VOICE_REF: Path = BASE_DIR / "models" / "baymax_voice_ref.wav"
     LOG_DIR: Path = BASE_DIR / "logs"
 
+    # ── AI Engine 2 (Multimodal Perception) ──────────────────────────────────
+    AE2_BASE_URL: str = "http://100.79.169.64:8001"
+    AE2_TIMEOUT: float = 30.0          # seconds per request
+    AE2_RETRY_ATTEMPTS: int = 2
+
     # ── Whisper STT ───────────────────────────────────────────────────────────
     WHISPER_MODEL: Literal["tiny", "base", "small", "medium", "large-v2", "large-v3"] = "medium"
     WHISPER_LANGUAGE: str = "en"

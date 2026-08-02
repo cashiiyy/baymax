@@ -1,0 +1,46 @@
+import os
+from pathlib import Path
+from pydantic import BaseModel, Field
+
+# ── Load .env from project root (K:\PROJECTS\BAYMAX\.env) ─────────────────────
+try:
+    from dotenv import load_dotenv
+    # Walk up from this file's location to find the .env
+    _env_path = Path(__file__).resolve().parent.parent / ".env"
+    if _env_path.exists():
+        load_dotenv(dotenv_path=_env_path, override=False)
+except ImportError:
+    pass  # python-dotenv not installed — rely on env vars set externally
+
+class EngineConfig(BaseModel):
+    """Configuration settings for AI Engine 1 Medical Intelligence Engine."""
+    # LLM Settings
+    openrouter_api_key: str = Field(default_factory=lambda: os.getenv("OPENROUTER_API_KEY", ""))
+    openrouter_base_url: str = Field(default_factory=lambda: os.getenv("OPENROUTER_BASE_URL", "https://openrouter.ai/api/v1"))
+    primary_llm_model: str = Field(default_factory=lambda: os.getenv("PRIMARY_LLM_MODEL", "qwen/qwen-2.5-72b-instruct"))
+    
+    # Fallback LLM Settings (Local Ollama Qwen 1.5B)
+    ollama_base_url: str = Field(default_factory=lambda: os.getenv("OLLAMA_BASE_URL", "http://127.0.0.1:11434"))
+    fallback_llm_model: str = Field(default_factory=lambda: os.getenv("FALLBACK_LLM_MODEL", "qwen:1.5b"))
+    
+    # Embedding Settings
+    embedding_model_name: str = Field(default_factory=lambda: os.getenv("EMBEDDING_MODEL_NAME", "all-MiniLM-L6-v2"))
+    embedding_dim: int = 384
+    embedding_cache_size: int = 2048
+    
+    # RAG Settings
+    vector_top_k: int = 5
+    similarity_threshold: float = 0.45
+    chunk_size: int = 500
+    chunk_overlap: int = 100
+    
+    # Safety & Confidence Settings
+    min_confidence_threshold: float = 0.65
+    high_confidence_threshold: float = 0.85
+    max_context_tokens: int = 4096
+    
+    # Service Settings
+    engine1_host: str = Field(default_factory=lambda: os.getenv("ENGINE1_HOST", "0.0.0.0"))
+    engine1_port: int = Field(default_factory=lambda: int(os.getenv("ENGINE1_PORT", "8001")))
+
+settings = EngineConfig()

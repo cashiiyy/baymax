@@ -19,6 +19,7 @@ from app.rag.pipeline import RAGPipeline
 from app.tts.xtts_engine import XTTSEngine
 from app.api.routes.avatar import avatar_ws_manager
 from app.avatar.controller import AvatarController
+from app.utils.ae2_client import ae2_client
 from app.utils.logger import get_logger
 
 log = get_logger(__name__)
@@ -103,15 +104,32 @@ async def chat_respond(req: ChatRequest):
             emotion=parsed.suggested_emotion
         )
         
-        # 7. Generate Voice (TTS)
-        speech = xtts_engine.synthesize(parsed.text)
-        audio_bytes = speech.to_bytes(format="wav")
+        # 7. Generate Voice (TTS) — try AE2 first, fall back to local XTTS
+        audio_b64: str | None = None
+        try:
+            ae2_tts = await ae2_client.tts(parsed.text)
+            if ae2_tts and ae2_tts.get("audio_base64"):
+                audio_b64 = ae2_tts["audio_base64"]
+                # Build audio bytes for the avatar WebSocket
+                import base64
+                audio_bytes = base64.b64decode(audio_b64)
+                duration_s  = ae2_tts.get("duration_seconds", 3.0)
+                log.info("TTS via AI Engine 2 | duration={:.2f}s", duration_s)
+            else:
+                raise ValueError("AE2 TTS returned no audio")
+        except Exception as tts_err:
+            log.warning("AE2 TTS unavailable ({}), using local XTTS.", tts_err)
+            speech      = xtts_engine.synthesize(parsed.text)
+            audio_bytes = speech.to_bytes(format="wav")
+            duration_s  = speech.duration_s
+            import base64
+            audio_b64 = base64.b64encode(audio_bytes).decode("utf-8")
         
         # 8. Command Avatar
         await avatar_controller.speak(
             text=parsed.text,
             audio_bytes=audio_bytes,
-            duration_s=speech.duration_s
+            duration_s=duration_s
         )
         
         # 9. Trigger expression based on parsed emotion
@@ -125,7 +143,7 @@ async def chat_respond(req: ChatRequest):
             suggested_emotion=parsed.suggested_emotion,
             is_emergency=parsed.is_emergency,
             latency_s=round(elapsed, 2),
-            audio_b64=None  # We sent it to avatar via WS, but could return here too
+            audio_b64=audio_b64,  # base64 WAV — AE2 or local XTTS
         )
         
     except Exception as exc:
