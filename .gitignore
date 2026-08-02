@@ -2,6 +2,7 @@
 __pycache__/
 *.py[cod]
 *$py.class
+*.pyo
 
 # Virtual Environment
 .venv/
@@ -15,9 +16,10 @@ venv/
 .env.test.local
 .env.production.local
 
-# Model files (Large files)
+# Model files (Large files - too big for GitHub)
 models/
 datasets/
+Baymax_voice model/
 
 # Compiled C extensions
 *.cpython-*.so
@@ -39,6 +41,28 @@ logs/
 .DS_Store
 Thumbs.db
 
+# Large binary / ML files
 *.pth
 *.index
 *.zip
+*.pt
+*.bin
+*.gguf
+*.safetensors
+*.onnx
+
+# Database files
+*.db
+*.sqlite3
+
+# Test / build cache
+.pytest_cache/
+build/
+dist/
+*.egg-info/
+
+# Data directories (vector stores, chroma, etc.)
+data/chroma_db/
+
+# Docker volumes / runtime data
+docker/volumes/
