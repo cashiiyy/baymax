@@ -296,6 +296,8 @@ async def text_to_speech(req: TTSRequest):
                 "language": req.language,
                 "stream": False,
                 "format": "wav",
+                "rvc_model_path": "k:\\PROJECTS\\BAYMAX\\Baymax_voice model\\Baymax.pth",
+                "rvc_index_path": "k:\\PROJECTS\\BAYMAX\\Baymax_voice model\\added_IVF799_Flat_nprobe_1_Baymax_v2.index"
             },
         )
         return result
