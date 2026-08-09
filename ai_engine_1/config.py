@@ -35,7 +35,7 @@ class EngineConfig(BaseModel):
     chunk_overlap: int = 100
     
     # Local Qwen 2.5 Settings (4-bit quantized, fits 8GB VRAM)
-    llm_provider: str = Field(default_factory=lambda: os.getenv("LLM_PROVIDER", "qwen_local"))
+    llm_provider: str = Field(default_factory=lambda: os.getenv("LLM_PROVIDER", "openrouter"))
     qwen_model: str = Field(default_factory=lambda: os.getenv("QWEN_MODEL", "Qwen/Qwen2.5-7B-Instruct-GPTQ-Int4"))
     qwen_max_new_tokens: int = Field(default_factory=lambda: int(os.getenv("QWEN_MAX_NEW_TOKENS", "512")))
     qwen_temperature: float = Field(default_factory=lambda: float(os.getenv("QWEN_TEMPERATURE", "0.3")))
