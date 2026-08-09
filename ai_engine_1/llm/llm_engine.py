@@ -20,7 +20,7 @@ class LLMResponse(BaseModel):
 
 
 class ProductionLLMEngine:
-    """Production LLM Engine with OpenRouter API primary model and local Ollama Qwen fallback."""
+    """Production LLM Engine with local Qwen 2.5 primary, OpenRouter API, and Gemini fallbacks."""
 
     def __init__(self, config=None):
         if config is None:
@@ -32,6 +32,14 @@ class ProductionLLMEngine:
         self.openrouter_url = f"{config.openrouter_base_url}/chat/completions"
         self.ollama_url = f"{config.ollama_base_url}/api/generate"
 
+        # Local Qwen 2.5 provider (lazy-initialized, only when configured)
+        self._qwen_local_provider = None
+        self._llm_provider_type = getattr(config, 'llm_provider', 'openrouter')
+        if self._llm_provider_type == 'qwen_local':
+            logger.info("[LLM] Provider selected: QwenLocal (4-bit quantized)")
+        else:
+            logger.info(f"[LLM] Provider selected: {self._llm_provider_type}")
+
     async def generate_async(
         self,
         prompt: str,
@@ -41,6 +49,21 @@ class ProductionLLMEngine:
         max_tokens: int = 1500
     ) -> LLMResponse:
         start_time = time.time()
+
+        # 0. Try Local Qwen 2.5 (4-bit quantized) if configured as primary
+        if self._llm_provider_type == 'qwen_local':
+            try:
+                provider = self._get_qwen_local_provider()
+                if provider.is_available():
+                    res = await provider.generate(
+                        prompt=prompt,
+                        system_prompt=system_prompt,
+                        temperature=temperature,
+                        max_tokens=max_tokens,
+                    )
+                    return res
+            except Exception as err:
+                logger.warning(f"[LLM] Local Qwen provider failed, falling back to cloud: {err}")
 
         # 1. Try Primary: OpenRouter API if key available
         if self.openrouter_api_key:
@@ -158,6 +181,27 @@ class ProductionLLMEngine:
             response.raise_for_status()
             data = response.json()
             return data.get("response", "").strip()
+
+    def _get_qwen_local_provider(self):
+        """Lazy-initialize the local Qwen 2.5 provider singleton."""
+        if self._qwen_local_provider is None:
+            from ai_engine_1.llm.provider_qwen import QwenLocalProvider
+            self._qwen_local_provider = QwenLocalProvider(
+                model_id=getattr(self.config, 'qwen_model', 'Qwen/Qwen2.5-7B-Instruct'),
+                max_new_tokens=getattr(self.config, 'qwen_max_new_tokens', 512),
+                temperature=getattr(self.config, 'qwen_temperature', 0.3),
+                top_p=getattr(self.config, 'qwen_top_p', 0.9),
+                repetition_penalty=getattr(self.config, 'qwen_repetition_penalty', 1.1),
+            )
+        return self._qwen_local_provider
+
+    @property
+    def active_provider_name(self) -> str:
+        """Return the name of the currently configured primary provider."""
+        if self._llm_provider_type == 'qwen_local':
+            provider = self._get_qwen_local_provider()
+            return provider.provider_name()
+        return f"OpenRouter/{self.primary_model}"
 
     def _build_offline_fallback(self, prompt: str) -> str:
         """Builds a context-aware offline response when all LLM backends are unavailable.

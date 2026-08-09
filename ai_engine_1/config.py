@@ -34,6 +34,14 @@ class EngineConfig(BaseModel):
     chunk_size: int = 500
     chunk_overlap: int = 100
     
+    # Local Qwen 2.5 Settings (4-bit quantized, fits 8GB VRAM)
+    llm_provider: str = Field(default_factory=lambda: os.getenv("LLM_PROVIDER", "openrouter"))
+    qwen_model: str = Field(default_factory=lambda: os.getenv("QWEN_MODEL", "Qwen/Qwen2.5-7B-Instruct"))
+    qwen_max_new_tokens: int = Field(default_factory=lambda: int(os.getenv("QWEN_MAX_NEW_TOKENS", "512")))
+    qwen_temperature: float = Field(default_factory=lambda: float(os.getenv("QWEN_TEMPERATURE", "0.3")))
+    qwen_top_p: float = Field(default_factory=lambda: float(os.getenv("QWEN_TOP_P", "0.9")))
+    qwen_repetition_penalty: float = Field(default_factory=lambda: float(os.getenv("QWEN_REPETITION_PENALTY", "1.1")))
+
     # Safety & Confidence Settings
     min_confidence_threshold: float = 0.65
     high_confidence_threshold: float = 0.85
