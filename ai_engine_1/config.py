@@ -14,14 +14,14 @@ except ImportError:
 
 class EngineConfig(BaseModel):
     """Configuration settings for AI Engine 1 Medical Intelligence Engine."""
-    # LLM Settings
-    openrouter_api_key: str = Field(default_factory=lambda: os.getenv("OPENROUTER_API_KEY", ""))
-    openrouter_base_url: str = Field(default_factory=lambda: os.getenv("OPENROUTER_BASE_URL", "https://openrouter.ai/api/v1"))
-    primary_llm_model: str = Field(default_factory=lambda: os.getenv("PRIMARY_LLM_MODEL", "qwen/qwen-2.5-72b-instruct"))
+    # LLM Settings (OmniRoute API Local Gateway proxy)
+    openrouter_api_key: str = Field(default_factory=lambda: os.getenv("OPENROUTER_API_KEY", "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"))
+    openrouter_base_url: str = Field(default_factory=lambda: os.getenv("OPENROUTER_BASE_URL", "http://localhost:20128/v1"))
+    primary_llm_model: str = Field(default_factory=lambda: os.getenv("PRIMARY_LLM_MODEL", "autosmart"))
     
-    # Fallback LLM Settings (Local Ollama Qwen 1.5B)
+    # Fallback LLM Settings (Local Ollama Qwen 2.5 7B or 1.5B fallback)
     ollama_base_url: str = Field(default_factory=lambda: os.getenv("OLLAMA_BASE_URL", "http://127.0.0.1:11434"))
-    fallback_llm_model: str = Field(default_factory=lambda: os.getenv("FALLBACK_LLM_MODEL", "qwen:1.5b"))
+    fallback_llm_model: str = Field(default_factory=lambda: os.getenv("FALLBACK_LLM_MODEL", "qwen2.5:7b"))
     
     # Embedding Settings
     embedding_model_name: str = Field(default_factory=lambda: os.getenv("EMBEDDING_MODEL_NAME", "all-MiniLM-L6-v2"))
@@ -35,8 +35,8 @@ class EngineConfig(BaseModel):
     chunk_overlap: int = 100
     
     # Local Qwen 2.5 Settings (4-bit quantized, fits 8GB VRAM)
-    llm_provider: str = Field(default_factory=lambda: os.getenv("LLM_PROVIDER", "openrouter"))
-    qwen_model: str = Field(default_factory=lambda: os.getenv("QWEN_MODEL", "Qwen/Qwen2.5-7B-Instruct"))
+    llm_provider: str = Field(default_factory=lambda: os.getenv("LLM_PROVIDER", "qwen_local"))
+    qwen_model: str = Field(default_factory=lambda: os.getenv("QWEN_MODEL", "Qwen/Qwen2.5-7B-Instruct-GPTQ-Int4"))
     qwen_max_new_tokens: int = Field(default_factory=lambda: int(os.getenv("QWEN_MAX_NEW_TOKENS", "512")))
     qwen_temperature: float = Field(default_factory=lambda: float(os.getenv("QWEN_TEMPERATURE", "0.3")))
     qwen_top_p: float = Field(default_factory=lambda: float(os.getenv("QWEN_TOP_P", "0.9")))

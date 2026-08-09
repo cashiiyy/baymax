@@ -68,21 +68,21 @@ def test_config_has_qwen_fields():
 
 
 def test_config_defaults():
-    """Default config should use openrouter provider (backward compat)."""
+    """EngineConfig should default to qwen_local."""
     from ai_engine_1.config import EngineConfig
     config = EngineConfig()
-    assert config.llm_provider == "openrouter"  # Default, not qwen_local
-    assert config.qwen_model == "Qwen/Qwen2.5-7B-Instruct"
+    assert config.llm_provider == "qwen_local"
+    assert config.qwen_model == "Qwen/Qwen2.5-7B-Instruct-GPTQ-Int4"
     assert config.qwen_max_new_tokens == 512
 
 
 # ── 4. Fallback Chain ─────────────────────────────────────────────────────────
 
 def test_llm_engine_default_provider_type():
-    """Default ProductionLLMEngine should use openrouter provider type."""
+    """Default ProductionLLMEngine should use qwen_local provider type."""
     from ai_engine_1.llm.llm_engine import ProductionLLMEngine
     engine = ProductionLLMEngine()
-    assert engine._llm_provider_type == "openrouter"
+    assert engine._llm_provider_type == "qwen_local"
 
 
 def test_llm_engine_active_provider_name():

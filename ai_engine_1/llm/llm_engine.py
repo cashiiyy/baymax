@@ -50,34 +50,50 @@ class ProductionLLMEngine:
     ) -> LLMResponse:
         start_time = time.time()
 
-        # 0. Try Local Qwen 2.5 (4-bit quantized) if configured as primary
-        if self._llm_provider_type == 'qwen_local':
+        # Context length validation: >4096 tokens is routed to gateway failover immediately
+        is_context_overflow = False
+        try:
+            # Quick estimation of tokens based on character count / 4
+            approx_tokens = len(prompt) // 4
+            if approx_tokens > 4096:
+                is_context_overflow = True
+                logger.warning(f"[LLM] Context window overflow detected (approx {approx_tokens} tokens). Directing to gateway backup.")
+        except Exception:
+            pass
+
+        # Try Local Qwen 2.5 (4-bit quantized) if configured as primary and context length is okay
+        if self._llm_provider_type == 'qwen_local' and not is_context_overflow:
             try:
                 provider = self._get_qwen_local_provider()
                 if provider.is_available():
-                    res = await provider.generate(
-                        prompt=prompt,
-                        system_prompt=system_prompt,
-                        temperature=temperature,
-                        max_tokens=max_tokens,
+                    # We wrap the local generation to execute failover on timeout or OOM/Cuda exceptions
+                    # using an internal timeout or try/except block.
+                    res = await asyncio.wait_for(
+                        provider.generate(
+                            prompt=prompt,
+                            system_prompt=system_prompt,
+                            temperature=temperature,
+                            max_tokens=max_tokens,
+                        ),
+                        timeout=30.0 # 30s timeout trigger metric
                     )
                     return res
             except Exception as err:
-                logger.warning(f"[LLM] Local Qwen provider failed, falling back to cloud: {err}")
+                logger.warning(f"[LLM] Local Qwen provider failed (possible OOM/Timeout/Error), falling back to OmniRoute gateway: {err}")
 
-        # 1. Try Primary: OpenRouter API if key available
+        # 1. Try Backup: OmniRoute API gateway (or OpenRouter if configured as backup)
         if self.openrouter_api_key:
             try:
                 res = await self._call_openrouter(prompt, system_prompt, temperature, json_mode, max_tokens)
                 latency = (time.time() - start_time) * 1000
                 return LLMResponse(
                     text=res,
-                    model_used=f"OpenRouter/{self.primary_model}",
+                    model_used=f"OmniRoute/{self.primary_model}",
                     latency_ms=round(latency, 2),
-                    fallback_triggered=False
+                    fallback_triggered=True
                 )
             except Exception as err:
-                logger.warning(f"OpenRouter API call failed, triggering fallback: {err}")
+                logger.warning(f"OmniRoute gateway API call failed, triggering secondary fallback: {err}")
 
         # 2. Try Fallback: Gemini API
         try:
@@ -201,7 +217,7 @@ class ProductionLLMEngine:
         if self._llm_provider_type == 'qwen_local':
             provider = self._get_qwen_local_provider()
             return provider.provider_name()
-        return f"OpenRouter/{self.primary_model}"
+        return f"OmniRoute/{self.primary_model}"
 
     def _build_offline_fallback(self, prompt: str) -> str:
         """Builds a context-aware offline response when all LLM backends are unavailable.
