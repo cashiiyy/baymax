@@ -234,6 +234,11 @@ async function toggleMicRecording() {
     await startMicRecording();
 }
 
+let audioContext = null;
+let audioAnalyser = null;
+let audioStream = null;
+let silenceTimer = null;
+
 async function startMicRecording() {
     if (!navigator.mediaDevices?.getUserMedia) {
         // Fallback directly to browser speech recognition
@@ -243,17 +248,57 @@ async function startMicRecording() {
 
     try {
         const stream = await navigator.mediaDevices.getUserMedia({ audio: true, video: false });
+        audioStream = stream;
         micChunks    = [];
         mediaRecorder = new MediaRecorder(stream, { mimeType: "audio/webm" });
 
         mediaRecorder.ondataavailable = (e) => { if (e.data.size > 0) micChunks.push(e.data); };
         mediaRecorder.onstop = async () => {
-            stream.getTracks().forEach(t => t.stop());
+            cleanupAudioContext();
             await transcribeAndSubmit(new Blob(micChunks, { type: "audio/webm" }));
         };
 
+        // Silence detection using Web Audio API
+        audioContext = new (window.AudioContext || window.webkitAudioContext)();
+        const source = audioContext.createMediaStreamSource(stream);
+        audioAnalyser = audioContext.createAnalyser();
+        audioAnalyser.fftSize = 512;
+        source.connect(audioAnalyser);
+
+        const bufferLength = audioAnalyser.frequencyBinCount;
+        const dataArray = new Uint8Array(bufferLength);
+        
+        let lastSoundTime = Date.now();
+        const silenceThreshold = 10; // low volume threshold
+        
+        function detectSilence() {
+            if (!isRecording) return;
+            audioAnalyser.getByteFrequencyData(dataArray);
+            
+            // Calculate average volume
+            let sum = 0;
+            for (let i = 0; i < bufferLength; i++) {
+                sum += dataArray[i];
+            }
+            const averageVolume = sum / bufferLength;
+
+            if (averageVolume > silenceThreshold) {
+                lastSoundTime = Date.now();
+            } else {
+                const silentDuration = Date.now() - lastSoundTime;
+                if (silentDuration >= 3000) { // 3 seconds of silence
+                    console.log("[BAYMAX] 3 seconds of silence detected. Stopping recording...");
+                    stopMicRecording();
+                    return;
+                }
+            }
+            requestAnimationFrame(detectSilence);
+        }
+
         mediaRecorder.start();
         isRecording = true;
+        detectSilence();
+
         const btn = document.getElementById("micBtn");
         if (btn) { btn.classList.add("recording"); btn.title = "Recording… click to stop"; }
 
@@ -264,10 +309,24 @@ async function startMicRecording() {
 }
 
 function stopMicRecording() {
-    if (mediaRecorder?.state === "recording") mediaRecorder.stop();
+    if (mediaRecorder?.state === "recording") {
+        mediaRecorder.stop();
+    }
     isRecording = false;
     const btn = document.getElementById("micBtn");
     if (btn) { btn.classList.remove("recording"); btn.title = "Click to Speak"; }
+}
+
+function cleanupAudioContext() {
+    if (audioStream) {
+        audioStream.getTracks().forEach(t => t.stop());
+        audioStream = null;
+    }
+    if (audioContext) {
+        audioContext.close().catch(() => {});
+        audioContext = null;
+    }
+    audioAnalyser = null;
 }
 
 // Browser Web Speech API STT (fallback when AE2/MediaRecorder fails)
