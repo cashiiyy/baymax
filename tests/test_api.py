@@ -7,15 +7,15 @@ client = TestClient(app)
 def test_web_interface():
     response = client.get("/")
     assert response.status_code == 200
-    assert "B.A.Y.M.A.X. v1" in response.text
+    assert "B.A.Y.M.A.X. v2" in response.text
 
 def test_health_check():
     response = client.get("/api/health")
     assert response.status_code == 200
     data = response.json()
     assert data["status"] == "online"
-    assert data["system"] == "B.A.Y.M.A.X. v1"
-    assert data["tailscale_ip"] == "100.89.251.123"
+    assert "B.A.Y.M.A.X. v2" in data["system"]
+    assert data["backend_ip"] == "100.108.247.7"
 
 def test_chat_endpoint():
     response = client.post("/chat", json={"user_id": 1, "query": "What are the symptoms of fever?"})
