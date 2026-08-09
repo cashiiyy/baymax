@@ -17,7 +17,7 @@ class EngineConfig(BaseModel):
     # LLM Settings (OmniRoute API Local Gateway proxy)
     openrouter_api_key: str = Field(default_factory=lambda: os.getenv("OPENROUTER_API_KEY", "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"))
     openrouter_base_url: str = Field(default_factory=lambda: os.getenv("OPENROUTER_BASE_URL", "http://localhost:20128/v1"))
-    primary_llm_model: str = Field(default_factory=lambda: os.getenv("PRIMARY_LLM_MODEL", "autosmart"))
+    primary_llm_model: str = Field(default_factory=lambda: os.getenv("PRIMARY_LLM_MODEL", "auto/best-free"))
     
     # Fallback LLM Settings (Local Ollama Qwen 2.5 7B or 1.5B fallback)
     ollama_base_url: str = Field(default_factory=lambda: os.getenv("OLLAMA_BASE_URL", "http://127.0.0.1:11434"))

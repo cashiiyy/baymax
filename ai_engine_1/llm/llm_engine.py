@@ -1,6 +1,7 @@
 import os
 import time
 import asyncio
+import json
 import httpx
 from typing import Optional, Dict, Any, List
 from pydantic import BaseModel
@@ -172,8 +173,36 @@ class ProductionLLMEngine:
         async with httpx.AsyncClient(timeout=30.0) as client:
             response = await client.post(self.openrouter_url, headers=headers, json=payload)
             response.raise_for_status()
+            
+            # Local gateways like OmniRoute might stream responses or return SSE payloads (data: chunks)
+            content_type = response.headers.get("content-type", "")
+            response_text = response.text.strip()
+            
+            if "text/event-stream" in content_type or response_text.startswith("data:"):
+                # Parse Server-Sent Events (SSE) data stream chunks
+                full_text = ""
+                for line in response_text.splitlines():
+                    line = line.strip()
+                    if line.startswith("data:") and not line.endswith("[DONE]"):
+                        try:
+                            json_str = line[5:].strip()
+                            chunk_data = json.loads(json_str)
+                            # Check standard delta choices
+                            choices = chunk_data.get("choices", [])
+                            if choices:
+                                delta = choices[0].get("delta", {})
+                                if "content" in delta:
+                                    full_text += delta["content"]
+                        except Exception:
+                            pass
+                if full_text:
+                    return full_text.strip()
+            
             data = response.json()
-            return data["choices"][0]["message"]["content"].strip()
+            # If standard JSON response
+            if "choices" in data:
+                return data["choices"][0]["message"]["content"].strip()
+            return response_text
 
     async def _call_ollama(
         self,
