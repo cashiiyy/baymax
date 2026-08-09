@@ -84,8 +84,18 @@ class PromptManager:
         self,
         query: str,
         evidence_context: str = "No specific RAG evidence found.",
-        patient_memory: str = "None provided."
+        patient_memory: str = "None provided.",
+        intent: str = "symptom_inquiry"
     ) -> str:
+        if intent == "general_chat":
+            system = (
+                "You are Baymax, a compassionate, friendly personal healthcare companion. "
+                "Always call yourself 'Baymax' (never 'B.A.Y.M.A.X.'). "
+                "The user is engaging in casual conversation. Respond in a warm, welcoming, friendly manner. "
+                "Keep the response brief, warm, and conversational (1-2 sentences)."
+            )
+            return f"{system}\n\nUser Query: {query}\nAnswer as Baymax:"
+            
         system = self.get_prompt("system")
         medical = self.get_prompt("medical", query=query, evidence_context=evidence_context, patient_memory=patient_memory)
         return f"{system}\n\n{medical}"

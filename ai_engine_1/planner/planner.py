@@ -18,6 +18,10 @@ class IntelligentQueryPlanner:
         "stroke", "heart attack", "poison", "suicide", "choking"
     ]
 
+    CHAT_KEYWORDS = [
+        "hi", "hello", "hey", "greetings", "whats up" ,"howdy", "sup", "good morning", "good afternoon", "good evening"
+    ]
+
     TOOL_KEYWORDS = {
         "bmi": ["bmi", "body mass index", "weight height ratio"],
         "bsa": ["bsa", "body surface area"],
@@ -26,7 +30,19 @@ class IntelligentQueryPlanner:
     }
 
     def plan(self, query: str) -> ExecutionPlan:
-        q_lower = query.lower()
+        q_lower = query.lower().strip()
+
+        # Check casual greetings / chitchat first
+        is_chitchat = q_lower in self.CHAT_KEYWORDS or any(q_lower.startswith(prefix + " ") for prefix in self.CHAT_KEYWORDS)
+        if is_chitchat:
+            return ExecutionPlan(
+                query=query,
+                intent="general_chat",
+                rag_required=False,
+                tool_required=False,
+                emergency_protocol=False,
+                confidence_expected=0.5
+            )
 
         # Check Emergency
         is_emergency = any(kw in q_lower for kw in self.EMERGENCY_KEYWORDS)

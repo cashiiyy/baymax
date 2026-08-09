@@ -79,7 +79,8 @@ class MedicalReasoningPipeline:
         assembled_prompt = self.prompts.assemble_reasoning_prompt(
             query=query,
             evidence_context=evidence_text,
-            patient_memory=user_history
+            patient_memory=user_history,
+            intent=plan.intent
         )
         system_prompt = self.prompts.get_prompt("system")
 
