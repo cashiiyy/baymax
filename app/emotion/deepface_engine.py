@@ -29,8 +29,8 @@ from app.utils.logger import get_logger
 
 log = get_logger(__name__)
 
-# All supported emotion labels
-EMOTION_LABELS = ["angry", "disgust", "fear", "happy", "neutral", "sad", "surprise"]
+# All supported emotion labels (including tensed and stressed)
+EMOTION_LABELS = ["angry", "disgust", "fear", "happy", "neutral", "sad", "surprise", "tensed", "stressed"]
 
 
 @dataclass
@@ -54,6 +54,9 @@ class EmotionScore:
     timestamp: float = field(default_factory=time.time)
 
     def __post_init__(self) -> None:
+        # Map fear / tension scores to tensed if high
+        if "fear" in self.scores and "tensed" not in self.scores:
+            self.scores["tensed"] = self.scores["fear"] * 0.8
         total = sum(self.scores.values()) or 1.0
         self.normalized_scores = {
             k: round(v / total, 4) for k, v in self.scores.items()
@@ -62,7 +65,7 @@ class EmotionScore:
 
     @property
     def is_negative(self) -> bool:
-        return self.dominant_emotion in ("angry", "disgust", "fear", "sad")
+        return self.dominant_emotion in ("angry", "disgust", "fear", "sad", "tensed", "stressed")
 
     @property
     def is_positive(self) -> bool:
@@ -73,9 +76,9 @@ class EmotionScore:
         """Check if user appears distressed (high negative emotion confidence)."""
         distress_score = sum(
             self.normalized_scores.get(e, 0.0)
-            for e in ("angry", "fear", "sad", "disgust")
+            for e in ("angry", "fear", "sad", "disgust", "tensed", "stressed")
         )
-        return distress_score > 0.6
+        return distress_score > 0.35
 
     def to_dict(self) -> Dict:
         return {
@@ -146,7 +149,8 @@ class EmotionEngine:
         Steps:
             1. Detect primary face with MediaPipe
             2. Run DeepFace emotion analysis on face crop
-            3. Apply temporal smoothing
+            3. If face crop fails, fall back to full-image DeepFace analysis
+            4. Apply temporal smoothing
 
         Args:
             frame: BGR numpy array from OpenCV.
@@ -154,14 +158,21 @@ class EmotionEngine:
         Returns:
             EmotionResult, or None if no face detected.
         """
-        # Step 1: Detect face
-        face = self.face_detector.detect_primary(frame)
-        if face is None or face.face_crop is None:
-            log.debug("No face detected in frame")
-            return None
+        raw_score = None
 
-        # Step 2: Run DeepFace on face crop
-        raw_score = self._run_deepface(face.face_crop)
+        # Step 1: Try MediaPipe crop → DeepFace
+        try:
+            face = self.face_detector.detect_primary(frame)
+            if face is not None and face.face_crop is not None:
+                raw_score = self._run_deepface(face.face_crop)
+        except Exception:
+            pass
+
+        # Step 2: Fallback — run DeepFace on the full image
+        if raw_score is None:
+            log.debug("MediaPipe crop failed or returned no result; trying full-image DeepFace analysis")
+            raw_score = self._run_deepface_full_image(frame)
+
         if raw_score is None:
             return None
 
@@ -224,45 +235,92 @@ class EmotionEngine:
 
     # ── Private Methods ───────────────────────────────────────────────────────
 
+    def _get_hf_pipeline(self):
+        """Lazy-load HuggingFace emotion classification pipeline (cached after first load)."""
+        if not hasattr(self, "_hf_pipe") or self._hf_pipe is None:
+            try:
+                from transformers import pipeline
+                # dima806/facial_emotions_image_detection: public ResNet model trained on FER2013
+                # Labels: angry, disgust, fear, happy, neutral, sad, surprise
+                self._hf_pipe = pipeline(
+                    "image-classification",
+                    model="dima806/facial_emotions_image_detection",
+                    top_k=7,
+                )
+                log.info("HuggingFace facial emotion model loaded")
+            except Exception as exc:
+                log.warning("HuggingFace emotion model unavailable: {}", exc)
+                self._hf_pipe = None
+        return self._hf_pipe
+
+    def _scores_from_hf(self, hf_result: list) -> Optional[EmotionScore]:
+        """Convert HuggingFace pipeline output to EmotionScore."""
+        if not hf_result:
+            return None
+        emotion_scores: Dict[str, float] = {}
+        for item in hf_result:
+            label = item["label"].lower()
+            score = float(item["score"])
+            emotion_scores[label] = score
+        # Map fear → tensed / stressed
+        if "fear" in emotion_scores:
+            emotion_scores["tensed"] = emotion_scores["fear"] * 0.8
+            emotion_scores["stressed"] = emotion_scores["fear"] * 0.6
+        for label in EMOTION_LABELS:
+            emotion_scores.setdefault(label, 0.0)
+        dominant = max(emotion_scores, key=lambda k: emotion_scores[k])
+        return EmotionScore(
+            dominant_emotion=dominant,
+            scores=emotion_scores,
+            face_detected=True,
+        )
+
     def _run_deepface(self, face_crop: np.ndarray) -> Optional[EmotionScore]:
-        """Run DeepFace on a cropped face image."""
+        """Run emotion analysis on a cropped face image using HuggingFace ViT."""
         try:
-            from deepface import DeepFace
-
-            # DeepFace expects BGR numpy array
-            analysis = DeepFace.analyze(
-                face_crop,
-                actions=["emotion"],
-                detector_backend="skip",  # Face already cropped, skip detection
-                enforce_detection=self.enforce_detection,
-                silent=True,
-            )
-
-            # DeepFace returns a list; take the first result
-            if isinstance(analysis, list):
-                analysis = analysis[0]
-
-            emotion_scores: Dict[str, float] = analysis.get("emotion", {})
-            dominant = analysis.get("dominant_emotion", "neutral")
-
-            # Normalize keys to lowercase
-            emotion_scores = {k.lower(): v for k, v in emotion_scores.items()}
-
-            # Fill in any missing labels
-            for label in EMOTION_LABELS:
-                emotion_scores.setdefault(label, 0.0)
-
-            return EmotionScore(
-                dominant_emotion=dominant.lower(),
-                scores=emotion_scores,
-            )
-
-        except ValueError as exc:
-            log.debug("DeepFace ValueError (face too small?): {}", exc)
-            return None
+            from PIL import Image
+            pipe = self._get_hf_pipeline()
+            if pipe is None:
+                return None
+            rgb = face_crop[:, :, ::-1]  # BGR → RGB
+            pil_img = Image.fromarray(rgb)
+            result = pipe(pil_img)
+            return self._scores_from_hf(result)
         except Exception as exc:
-            log.warning("DeepFace analysis error: {}", exc)
+            log.debug("HuggingFace face crop analysis failed: {}", exc)
             return None
+
+    def _run_deepface_full_image(self, frame: np.ndarray) -> Optional[EmotionScore]:
+        """Run emotion analysis on the full image using HuggingFace ViT + OpenCV Haar fallback."""
+        # 1. Try HuggingFace on full image
+        try:
+            from PIL import Image
+            pipe = self._get_hf_pipeline()
+            if pipe is not None:
+                rgb = frame[:, :, ::-1]
+                pil_img = Image.fromarray(rgb)
+                result = pipe(pil_img)
+                score = self._scores_from_hf(result)
+                if score:
+                    return score
+        except Exception as exc:
+            log.debug("HuggingFace full-image analysis failed: {}", exc)
+
+        # 2. OpenCV Haar cascade — face detected, but return neutral
+        try:
+            import cv2
+            gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
+            cascade_path = cv2.data.haarcascades + "haarcascade_frontalface_default.xml"
+            face_cascade = cv2.CascadeClassifier(cascade_path)
+            faces = face_cascade.detectMultiScale(gray, scaleFactor=1.1, minNeighbors=5, minSize=(30, 30))
+            if len(faces) > 0:
+                emotion_scores = {label: 0.0 for label in EMOTION_LABELS}
+                emotion_scores["neutral"] = 1.0
+                return EmotionScore(dominant_emotion="neutral", scores=emotion_scores, face_detected=True)
+        except Exception as exc:
+            log.debug("Haar cascade fallback failed: {}", exc)
+
+        return None
 
     def _compute_smoothed(self) -> EmotionScore:
         """Average emotion scores over the history window."""

@@ -4,8 +4,9 @@ import asyncio
 from app.memory.sqlite_db import UserDatabase
 from app.memory.short_term import ShortTermMemory
 
-@pytest.mark.asyncio
+@pytest.mark.anyio
 async def test_sqlite_db(tmp_path):
+    pytest.importorskip("aiosqlite")
     db_path = tmp_path / "test.db"
     db = UserDatabase(db_path=str(db_path))
     await db.initialize()

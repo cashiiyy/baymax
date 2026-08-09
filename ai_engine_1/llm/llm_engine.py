@@ -21,7 +21,7 @@ class LLMResponse(BaseModel):
 
 
 class ProductionLLMEngine:
-    """Production LLM Engine with local Qwen 2.5 primary, OpenRouter API, and Gemini fallbacks."""
+    """Production LLM Engine with local Qwen 2.5 primary, OmniRoute API, and Gemini fallbacks."""
 
     def __init__(self, config=None):
         if config is None:
@@ -29,13 +29,13 @@ class ProductionLLMEngine:
         self.config = config
         self.primary_model = config.primary_llm_model
         self.fallback_model = config.fallback_llm_model
-        self.openrouter_api_key = config.openrouter_api_key
-        self.openrouter_url = f"{config.openrouter_base_url}/chat/completions"
+        self.omniroute_api_key = config.omniroute_api_key
+        self.omniroute_url = f"{config.omniroute_base_url}/chat/completions"
         self.ollama_url = f"{config.ollama_base_url}/api/generate"
 
         # Local Qwen 2.5 provider (lazy-initialized, only when configured)
         self._qwen_local_provider = None
-        self._llm_provider_type = getattr(config, 'llm_provider', 'openrouter')
+        self._llm_provider_type = getattr(config, 'llm_provider', 'omniroute')
         if self._llm_provider_type == 'qwen_local':
             logger.info("[LLM] Provider selected: QwenLocal (4-bit quantized)")
         else:
@@ -82,10 +82,10 @@ class ProductionLLMEngine:
             except Exception as err:
                 logger.warning(f"[LLM] Local Qwen provider failed (possible OOM/Timeout/Error), falling back to OmniRoute gateway: {err}")
 
-        # 1. Try Backup: OmniRoute API gateway (or OpenRouter if configured as backup)
-        if self.openrouter_api_key:
+        # 1. Try Backup: OmniRoute API gateway
+        if self.omniroute_api_key:
             try:
-                res = await self._call_openrouter(prompt, system_prompt, temperature, json_mode, max_tokens)
+                res = await self._call_omniroute(prompt, system_prompt, temperature, json_mode, max_tokens)
                 latency = (time.time() - start_time) * 1000
                 return LLMResponse(
                     text=res,
@@ -96,30 +96,54 @@ class ProductionLLMEngine:
             except Exception as err:
                 logger.warning(f"OmniRoute gateway API call failed, triggering secondary fallback: {err}")
 
-        # 2. Try Fallback: Gemini API
+        # 2. Try Fallback: g4f (GPT4Free free dynamic LLM)
         try:
-            import google.generativeai as genai
-            
-            api_key = os.getenv("GEMINI_API_KEY", "AIzaSyDJxwOTPaNZw-p3glKSfYZyhxa5w9cxtzE")
-            genai.configure(api_key=api_key)
-            
-            model = genai.GenerativeModel("gemini-flash-latest")
-            full_prompt = f"{system_prompt}\n\nUser: {prompt}" if system_prompt else prompt
-            
-            res = await model.generate_content_async(full_prompt)
-            response_text = res.text
-            
-            latency = (time.time() - start_time) * 1000
-            return LLMResponse(
-                text=response_text,
-                model_used="Gemini/gemini-flash-latest",
-                latency_ms=round(latency, 2),
-                fallback_triggered=True
-            )
-        except Exception as err:
-            logger.warning(f"Gemini fallback failed: {err}")
+            from g4f.client import Client
+            g4f_client = Client()
+            messages = []
+            if system_prompt:
+                messages.append({"role": "system", "content": system_prompt})
+            messages.append({"role": "user", "content": prompt})
 
-        # 3. Safe offline fallback — dynamic context-aware response
+            g4f_res = await asyncio.to_thread(
+                lambda: g4f_client.chat.completions.create(
+                    model="gpt-4o-mini",
+                    messages=messages,
+                )
+            )
+            response_text = g4f_res.choices[0].message.content
+            if response_text and len(response_text.strip()) > 5:
+                latency = (time.time() - start_time) * 1000
+                return LLMResponse(
+                    text=response_text.strip(),
+                    model_used="g4f/gpt-4o-mini",
+                    latency_ms=round(latency, 2),
+                    fallback_triggered=True
+                )
+        except Exception as g4f_err:
+            logger.warning(f"g4f fallback failed: {g4f_err}")
+
+        # 3. Try Fallback: Gemini API (if valid GEMINI_API_KEY is configured in env)
+        gemini_key = os.getenv("GEMINI_API_KEY")
+        if gemini_key:
+            try:
+                import google.generativeai as genai
+                genai.configure(api_key=gemini_key)
+                model = genai.GenerativeModel("gemini-flash-latest")
+                full_prompt = f"{system_prompt}\n\nUser: {prompt}" if system_prompt else prompt
+                res = await model.generate_content_async(full_prompt)
+                response_text = res.text
+                latency = (time.time() - start_time) * 1000
+                return LLMResponse(
+                    text=response_text,
+                    model_used="Gemini/gemini-flash-latest",
+                    latency_ms=round(latency, 2),
+                    fallback_triggered=True
+                )
+            except Exception as err:
+                logger.warning(f"Gemini fallback failed: {err}")
+
+        # 4. Safe offline fallback — dynamic context-aware response
         latency = (time.time() - start_time) * 1000
         fallback_text = self._build_offline_fallback(prompt)
         return LLMResponse(
@@ -141,7 +165,7 @@ class ProductionLLMEngine:
         except Exception:
             return asyncio.run(self.generate_async(prompt, **kwargs))
 
-    async def _call_openrouter(
+    async def _call_omniroute(
         self,
         prompt: str,
         system_prompt: Optional[str],
@@ -150,7 +174,7 @@ class ProductionLLMEngine:
         max_tokens: int
     ) -> str:
         headers = {
-            "Authorization": f"Bearer {self.openrouter_api_key}",
+            "Authorization": f"Bearer {self.omniroute_api_key}",
             "HTTP-Referer": "https://baymax.local",
             "X-Title": "BAYMAX Medical Intelligence Engine",
             "Content-Type": "application/json"
@@ -171,7 +195,7 @@ class ProductionLLMEngine:
             payload["response_format"] = {"type": "json_object"}
 
         async with httpx.AsyncClient(timeout=30.0) as client:
-            response = await client.post(self.openrouter_url, headers=headers, json=payload)
+            response = await client.post(self.omniroute_url, headers=headers, json=payload)
             response.raise_for_status()
             
             # Local gateways like OmniRoute might stream responses or return SSE payloads (data: chunks)
@@ -379,8 +403,8 @@ class ProductionLLMEngine:
             "2. Ensure adequate rest, hydration, and a balanced diet.\n"
             "3. Avoid self-medicating with prescription drugs without professional guidance.\n\n"
             "For personalized medical advice, please consult a qualified healthcare professional.\n\n"
-            "Note: The AI inference backend (OpenRouter / Ollama) is currently offline. "
-            "To enable full dynamic AI responses, add your OPENROUTER_API_KEY to the .env file "
+            "Note: The AI inference backend (OmniRoute / Ollama) is currently offline. "
+            "To enable full dynamic AI responses, add your OMNIROUTE_API_KEY to the .env file "
             "or run Ollama locally (port 11434) with: ollama pull qwen:1.5b"
         )
 

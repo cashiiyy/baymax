@@ -116,8 +116,8 @@ async def llm_status_endpoint():
     status = {
         "provider_type": provider_type,
         "active_provider": provider_name,
-        "openrouter_model": llm.primary_model,
-        "openrouter_configured": bool(llm.openrouter_api_key),
+        "omniroute_model": llm.primary_model,
+        "omniroute_configured": bool(llm.omniroute_api_key),
     }
 
     # Check local Qwen provider availability if configured

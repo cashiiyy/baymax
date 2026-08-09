@@ -189,19 +189,16 @@ class WhisperEngine:
     def transcribe_file(self, file_path: str) -> TranscriptionResult:
         """
         Transcribe an audio file from disk.
-
-        Args:
-            file_path: Path to the audio file (WAV, MP3, etc.).
-
-        Returns:
-            TranscriptionResult.
         """
-        import soundfile as sf
-
-        audio, sr = sf.read(file_path, dtype="float32", always_2d=False)
-        if audio.ndim == 2:
-            audio = audio.mean(axis=1)  # Stereo → mono
-        return self.transcribe(audio, sample_rate=sr)
+        try:
+            import soundfile as sf
+            audio, sr = sf.read(file_path, dtype="float32", always_2d=False)
+            if audio.ndim == 2:
+                audio = audio.mean(axis=1)  # Stereo → mono
+            return self.transcribe(audio, sample_rate=sr)
+        except Exception as err:
+            log.warning("Local soundfile/whisper transcription unnavailable: {}", err)
+            return TranscriptionResult(text="", language="en", confidence=0.0)
 
     def is_loaded(self) -> bool:
         """Return True if the model is currently loaded in memory."""
@@ -217,16 +214,20 @@ class WhisperEngine:
     def _ensure_model_loaded(self) -> None:
         if self._model is not None:
             return
-        log.info("Loading Faster Whisper model: {}", self.model_size)
-        from faster_whisper import WhisperModel
+        try:
+            log.info("Loading Faster Whisper model: {}", self.model_size)
+            from faster_whisper import WhisperModel
 
-        self._model = WhisperModel(
-            self.model_size,
-            device=self.device,
-            compute_type=self.compute_type,
-            download_root=None,  # Uses default HF cache
-        )
-        log.info("WhisperEngine loaded | model={}", self.model_size)
+            self._model = WhisperModel(
+                self.model_size,
+                device=self.device,
+                compute_type=self.compute_type,
+                download_root=None,  # Uses default HF cache
+            )
+            log.info("WhisperEngine loaded | model={}", self.model_size)
+        except Exception as err:
+            log.warning("Faster-Whisper not available – Speech Recognition will fallback to Browser STT: {}", err)
+            raise RuntimeError(f"Faster-Whisper unavailable: {err}")
 
     @staticmethod
     def _resample(

@@ -29,6 +29,7 @@ let mediaRecorder = null;
 let micChunks     = [];
 
 let cameraStream   = null;
+let _visionInterval = null;   // auto-analysis timer handle
 let wakeWordActive = false;
 let wakeWordRecognition = null;   // Browser SpeechRecognition for wake word
 
@@ -370,51 +371,32 @@ function startBrowserSTT() {
 }
 
 async function transcribeAndSubmit(audioBlob) {
-    const loadingId = appendMessage("🎙️ Transcribing your voice…", "assistant");
+    const loadingId = appendMessage("🎙️ Transcribing your voice via AI Engine 1…", "assistant");
     try {
         let transcriptText = "";
 
-        // Try AE2 transcription first
-        if (ae2Online && ai2) {
-            try {
-                const result = await ai2.transcribe(audioBlob);
-                if (result?.has_speech && result?.text) {
-                    transcriptText = result.text.trim();
+        // 1. Send directly to AI Engine 1 STT
+        try {
+            const form = new FormData();
+            form.append("file", audioBlob, "audio.webm");
+            const res = await fetch(`${API_BASE}/stt`, { method: "POST", body: form });
+            if (res.ok) {
+                const data = await res.json();
+                if (data.text) {
+                    transcriptText = data.text.trim();
                 }
-            } catch (ae2Err) {
-                // Check if it's the FFmpeg error — if so, fall back to browser STT
-                const msg = ae2Err.message || "";
-                if (msg.includes("FFmpeg") || msg.includes("AudioProcessingError") || msg.includes("422")) {
-                    console.warn("[BAYMAX] AE2 STT failed (FFmpeg/AE2 issue), falling back to browser STT.");
-                    removeMessage(loadingId);
-                    // Use browser STT as fallback
-                    startBrowserSTT();
-                    return;
-                }
-                console.warn("[BAYMAX] AE2 transcription error:", ae2Err.message);
+            } else {
+                console.warn(`[BAYMAX] AI Engine 1 STT HTTP ${res.status}`);
             }
+        } catch (ae1Err) {
+            console.warn("[BAYMAX] AI Engine 1 STT failed:", ae1Err.message);
         }
 
+        // 2. Fallback to Browser Speech Recognition if AI Engine 1 STT yielded no text
         if (!transcriptText) {
-            // Try backend proxy transcription
-            try {
-                const form = new FormData();
-                form.append("file", audioBlob, "audio.webm");
-                const res  = await fetch(`${API_BASE}/stt`, { method: "POST", body: form });
-                if (res.ok) {
-                    const data = await res.json();
-                    transcriptText = data.text || "";
-                }
-            } catch (backendErr) {
-                console.warn("[BAYMAX] Backend STT failed:", backendErr.message);
-            }
-        }
-
-        if (!transcriptText) {
-            updateMessage(loadingId,
-                "⚠️ Could not transcribe audio. AI Engine 2 may need FFmpeg installed. " +
-                "Please type your query or use the mic button for browser speech recognition."
-            );
+            console.warn("[BAYMAX] AI Engine 1 STT yielded no text, attempting browser STT fallback...");
+            removeMessage(loadingId);
+            startBrowserSTT();
             return;
         }
 
@@ -598,6 +580,9 @@ async function toggleCamera() {
     const captureBtn = document.getElementById("captureBtn");
 
     if (cameraStream) {
+        // Stop camera + auto-analysis loop
+        clearInterval(_visionInterval);
+        _visionInterval = null;
         cameraStream.getTracks().forEach(t => t.stop());
         cameraStream = null;
         if (videoEl)    videoEl.style.display    = "none";
@@ -615,7 +600,12 @@ async function toggleCamera() {
             videoEl.style.display = "block";
         }
         if (cameraBtn)  cameraBtn.textContent    = "⏹ Stop Camera";
-        if (captureBtn) captureBtn.style.display = "inline-flex";
+        // Hide manual capture button — auto-analysis handles it
+        if (captureBtn) captureBtn.style.display = "none";
+
+        // Start auto-analysis: run immediately then every 5 seconds
+        await captureAndAnalyse();
+        _visionInterval = setInterval(captureAndAnalyse, 5000);
     } catch (err) {
         appendMessage(`⚠️ Camera error: ${err.message}. Please allow camera access in your browser.`, "assistant");
     }
@@ -628,11 +618,6 @@ async function captureAndAnalyse() {
     if (!videoEl) return;
     if (resultEl) { resultEl.style.display = "block"; resultEl.textContent = "Analysing frame…"; }
 
-    if (!ae2Online || !ai2) {
-        if (resultEl) resultEl.textContent = "⚠️ AI Engine 2 must be online for vision analysis.";
-        return;
-    }
-
     try {
         // Capture frame to canvas, convert to JPEG blob (avoids OpenCV format issues)
         const canvas    = document.createElement("canvas");
@@ -641,7 +626,7 @@ async function captureAndAnalyse() {
         const ctx       = canvas.getContext("2d");
         ctx.drawImage(videoEl, 0, 0);
 
-        // Convert to JPEG blob (not PNG/BGRA) to avoid OpenCV format=5/6 error
+        // Convert to JPEG blob
         const blob = await new Promise((resolve) => canvas.toBlob(resolve, "image/jpeg", 0.85));
 
         if (!blob) {
@@ -649,10 +634,21 @@ async function captureAndAnalyse() {
             return;
         }
 
-        const result = await ai2.vision(blob);
+        // ── Route through /proxy/vision (AI Engine 1) instead of AE2 directly ──
+        // This applies the local HuggingFace emotion model override.
+        const formData = new FormData();
+        formData.append("file", blob, "frame.jpg");
+
+        const resp = await fetch("/proxy/vision", { method: "POST", body: formData });
+        if (!resp.ok) {
+            const txt = await resp.text().catch(() => "");
+            if (resultEl) resultEl.textContent = `⚠️ Vision analysis failed (${resp.status}): ${txt.slice(0, 120)}`;
+            return;
+        }
+        const result = await resp.json();
 
         if (!result) {
-            if (resultEl) resultEl.textContent = "No result from AI Engine 2.";
+            if (resultEl) resultEl.textContent = "No result from vision analysis.";
             return;
         }
 
@@ -673,20 +669,18 @@ async function captureAndAnalyse() {
     } catch (err) {
         const errMsg = err.message || "";
         let friendly = errMsg;
-
         if (errMsg.includes("VisionError") || errMsg.includes("OpenCV") || errMsg.includes("422")) {
-            friendly = "⚠️ Vision analysis failed. AI Engine 2 has an OpenCV compatibility issue. " +
-                       "AE2 needs to be updated (see AE2 fix prompt).";
+            friendly = "⚠️ Vision analysis failed. AI Engine 2 has an OpenCV compatibility issue.";
         } else if (errMsg.includes("unavailable") || errMsg.includes("offline")) {
             friendly = "⚠️ AI Engine 2 is offline. Vision analysis requires AE2 to be running.";
         }
-
         if (resultEl) resultEl.textContent = friendly;
         console.warn("[BAYMAX] Vision error:", errMsg);
     }
 }
 
-// ── Wake Word (AE2 → Browser SpeechRecognition fallback) ─────────────────────
+
+// ── Wake Word (Browser SpeechRecognition + AI Engine 1 fallback) ─────────────
 async function toggleWakeWord() {
     const btn    = document.getElementById("wakeWordBtn");
     const status = document.getElementById("wakeWordStatus");
@@ -700,29 +694,68 @@ async function toggleWakeWord() {
         return;
     }
 
-    // Try AE2 wake word first
-    if (ae2Online && ai2) {
-        try {
-            await ai2.startWakeWordDetection((result) => {
-                appendMessage(`🔔 Wake word detected! You said: "${result.text}"`, "assistant");
-                startMicRecording();
-            });
-            wakeWordActive = true;
-            if (btn)    btn.textContent    = "🛑 Disable Wake Word";
-            if (status) status.textContent = `🎙️ Listening for "Hey Baymax" via AE2…`;
-            return;
-        } catch (ae2Err) {
-            const msg = ae2Err.message || "";
-            if (msg.includes("FFmpeg") || msg.includes("AudioProcessingError")) {
-                console.warn("[BAYMAX] AE2 wake word failed (FFmpeg), using browser fallback.");
-            } else {
-                console.warn("[BAYMAX] AE2 wake word error:", msg);
-            }
-        }
+    // Activate Web Speech API wake word listener
+    startBrowserWakeWord(btn, status);
+}
+
+async function startAE1WakeWord(btn, status) {
+    let stream;
+    try {
+        stream = await navigator.mediaDevices.getUserMedia({ audio: true, video: false });
+    } catch (err) {
+        startBrowserWakeWord(btn, status);
+        return;
     }
 
-    // Browser SpeechRecognition fallback
-    startBrowserWakeWord(btn, status);
+    wakeWordActive = true;
+    if (btn)    btn.textContent    = "🛑 Disable Wake Word";
+    if (status) status.textContent = `🎙️ Listening for "Hey Baymax" (AI Engine 1)…`;
+
+    const checkChunk = () => {
+        if (!wakeWordActive) {
+            stream.getTracks().forEach(t => t.stop());
+            return;
+        }
+        if (isRecording) {
+            setTimeout(checkChunk, 1000);
+            return;
+        }
+
+        const recorder = new MediaRecorder(stream, { mimeType: "audio/webm" });
+        const chunks = [];
+
+        recorder.ondataavailable = (e) => { if (e.data.size > 0) chunks.push(e.data); };
+        recorder.onstop = async () => {
+            if (!wakeWordActive) return;
+            try {
+                const blob = new Blob(chunks, { type: "audio/webm" });
+                const form = new FormData();
+                form.append("file", blob, "chunk.webm");
+                form.append("wake_word", "hey baymax");
+
+                const res = await fetch(`${API_BASE}/wakeword`, { method: "POST", body: form });
+                if (res.ok) {
+                    const data = await res.json();
+                    if (data.wake_word_detected) {
+                        if (status) status.textContent = "🔔 Wake word detected! Activating mic...";
+                        stopWakeWordDetection();
+                        startMicRecording();
+                        return;
+                    }
+                }
+            } catch (err) {
+                console.warn("[BAYMAX] AE1 wake word chunk check error:", err);
+            }
+            if (wakeWordActive) setTimeout(checkChunk, 200);
+        };
+
+        recorder.start();
+        setTimeout(() => {
+            if (recorder.state === "recording") recorder.stop();
+        }, 3000);
+    };
+
+    checkChunk();
 }
 
 function startBrowserWakeWord(btn, status) {

@@ -15,8 +15,8 @@ except ImportError:
 class EngineConfig(BaseModel):
     """Configuration settings for AI Engine 1 Medical Intelligence Engine."""
     # LLM Settings (OmniRoute API Local Gateway proxy)
-    openrouter_api_key: str = Field(default_factory=lambda: os.getenv("OPENROUTER_API_KEY", ""))
-    openrouter_base_url: str = Field(default_factory=lambda: os.getenv("OPENROUTER_BASE_URL", "http://localhost:20128/v1"))
+    omniroute_api_key: str = Field(default_factory=lambda: os.getenv("OMNIROUTE_API_KEY", ""))
+    omniroute_base_url: str = Field(default_factory=lambda: os.getenv("OMNIROUTE_BASE_URL", "http://localhost:20128/v1"))
     primary_llm_model: str = Field(default_factory=lambda: os.getenv("PRIMARY_LLM_MODEL", "auto/best-free"))
     
     # Fallback LLM Settings (Local Ollama Qwen 2.5 7B or 1.5B fallback)
@@ -35,7 +35,7 @@ class EngineConfig(BaseModel):
     chunk_overlap: int = 100
     
     # Local Qwen 2.5 Settings (4-bit quantized, fits 8GB VRAM)
-    llm_provider: str = Field(default_factory=lambda: os.getenv("LLM_PROVIDER", "qwen_local"))
+    llm_provider: str = Field(default_factory=lambda: os.getenv("LLM_PROVIDER", "omniroute"))
     qwen_model: str = Field(default_factory=lambda: os.getenv("QWEN_MODEL", "Qwen/Qwen2.5-7B-Instruct-GPTQ-Int4"))
     qwen_max_new_tokens: int = Field(default_factory=lambda: int(os.getenv("QWEN_MAX_NEW_TOKENS", "512")))
     qwen_temperature: float = Field(default_factory=lambda: float(os.getenv("QWEN_TEMPERATURE", "0.3")))

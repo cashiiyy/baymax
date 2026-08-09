@@ -68,10 +68,10 @@ def test_config_has_qwen_fields():
 
 
 def test_config_defaults():
-    """EngineConfig should default to qwen_local."""
+    """EngineConfig should default to omniroute."""
     from ai_engine_1.config import EngineConfig
     config = EngineConfig()
-    assert config.llm_provider == "qwen_local"
+    assert config.llm_provider == "omniroute"
     assert config.qwen_model == "Qwen/Qwen2.5-7B-Instruct-GPTQ-Int4"
     assert config.qwen_max_new_tokens == 512
 
@@ -79,10 +79,10 @@ def test_config_defaults():
 # ── 4. Fallback Chain ─────────────────────────────────────────────────────────
 
 def test_llm_engine_default_provider_type():
-    """Default ProductionLLMEngine should use qwen_local provider type."""
+    """Default ProductionLLMEngine should use omniroute provider type."""
     from ai_engine_1.llm.llm_engine import ProductionLLMEngine
     engine = ProductionLLMEngine()
-    assert engine._llm_provider_type == "qwen_local"
+    assert engine._llm_provider_type == "omniroute"
 
 
 def test_llm_engine_active_provider_name():
@@ -97,7 +97,7 @@ def test_llm_engine_active_provider_name():
 def test_llm_engine_offline_fallback():
     """With no API keys and no local model, should fall back to offline."""
     from ai_engine_1.config import EngineConfig
-    config = EngineConfig(openrouter_api_key="")  # No API key
+    config = EngineConfig(omniroute_api_key="")  # No API key
     from ai_engine_1.llm.llm_engine import ProductionLLMEngine
     engine = ProductionLLMEngine(config=config)
 

@@ -15,7 +15,8 @@ def test_health_check():
     data = response.json()
     assert data["status"] == "online"
     assert "B.A.Y.M.A.X. v2" in data["system"]
-    assert data["backend_ip"] == "100.108.247.7"
+    import os
+    assert data["backend_ip"] == os.getenv("TAILSCALE_IP", "100.89.251.123")
 
 def test_chat_endpoint():
     response = client.post("/chat", json={"user_id": 1, "query": "What are the symptoms of fever?"})

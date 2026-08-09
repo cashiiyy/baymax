@@ -160,11 +160,12 @@ def assess_observation_risk(obs: VisionObservation) -> ObservationRiskAssessment
         escalate = True
         triggers.append(f"Prolonged inactivity ({obs.duration_seconds:.0f}s) with {obs.movement_state} movement")
 
-    # Facial distress escalation
-    if obs.facial_state in ("distressed", "pain") and obs.confidence >= 0.75:
+    # Facial distress / negative emotion escalation (angry, sad, tensed, stressed, distressed, pain, fear)
+    negative_states = {"distressed", "pain", "angry", "sad", "tensed", "stressed", "fear"}
+    if obs.facial_state.lower() in negative_states and obs.confidence >= 0.4:
         if risk == "low":
             risk = "medium"
-        triggers.append(f"Facial state indicates '{obs.facial_state}'")
+        triggers.append(f"Facial state indicates '{obs.facial_state}' (confidence: {obs.confidence:.0%})")
 
     return ObservationRiskAssessment(
         risk_level=risk,
