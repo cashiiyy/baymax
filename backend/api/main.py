@@ -419,13 +419,149 @@ async def text_to_speech(req: TTSRequest):
 
 # ── AI Engine 2 Proxy — Multimodal ───────────────────────────────────────────
 
+def _extract_pdf_text_local(file_bytes: bytes) -> str:
+    import fitz # PyMuPDF
+    text = ""
+    try:
+        doc = fitz.open(stream=file_bytes, filetype="pdf")
+        for page in doc:
+            text += page.get_text()
+    except Exception as e:
+        logger.error(f"Local PDF extraction failed: {e}")
+    return text
+
+
+async def _process_medical_document_rag(raw_text: str) -> dict:
+    """
+    Two-step RAG extraction and summary pipeline:
+    Step 1: Extract structured medical fields.
+    Step 2: Generate a personalized user health summary.
+    """
+    # 1. Query RAG database for medical context based on the report text
+    evidence_context = "No specific RAG context found."
+    try:
+        # Search using first 200 characters of report text as query
+        search_query = raw_text[:200]
+        rag_res = reasoning_pipeline.rag_pipeline.search(search_query, top_k=3)
+        evidence_context = rag_res.to_context_string()
+    except Exception as e:
+        logger.warning(f"RAG search failed in document processing: {e}")
+
+    # Step 1: Extract medical fields
+    step1_prompt = (
+        "You are Baymax, a compassionate medical companion.\n"
+        "Extract the following fields from the raw medical report text below.\n"
+        "If a field is not present in the text, write 'Not specified'.\n\n"
+        "Fields to extract:\n"
+        "1. Patient Name\n"
+        "2. Report Date\n"
+        "3. Diagnostic / Clinical Findings\n"
+        "4. Lab / Test Values (vitals, blood tests, etc.)\n"
+        "5. Prescribed Medications & Dosages\n"
+        "6. Key Recommendations / Advice\n\n"
+        f"Medical Reference Context:\n{evidence_context}\n\n"
+        f"Raw Report Text:\n{raw_text}\n\n"
+        "Format the output strictly as a JSON object with keys: "
+        "'patient_name', 'report_date', 'findings', 'test_values', 'medications', 'recommendations'."
+    )
+    
+    extracted_fields = {}
+    try:
+        llm_res = await reasoning_pipeline.llm.generate_async(step1_prompt, json_mode=True)
+        import json
+        extracted_fields = json.loads(llm_res.text)
+    except Exception as e:
+        logger.error(f"Step 1: Field extraction failed: {e}")
+        # Fallback if json parsing fails
+        extracted_fields = {
+            "patient_name": "Not specified",
+            "report_date": "Not specified",
+            "findings": raw_text[:300] + "...",
+            "test_values": "Not specified",
+            "medications": "Not specified",
+            "recommendations": "Not specified"
+        }
+
+    # Step 2: Generate personalized user summary
+    fields_summary_str = (
+        f"Patient: {extracted_fields.get('patient_name')}\n"
+        f"Date: {extracted_fields.get('report_date')}\n"
+        f"Findings: {extracted_fields.get('findings')}\n"
+        f"Test Values: {extracted_fields.get('test_values')}\n"
+        f"Medications: {extracted_fields.get('medications')}\n"
+        f"Recommendations: {extracted_fields.get('recommendations')}"
+    )
+    
+    step2_prompt = (
+        "You are Baymax, a compassionate, friendly personal healthcare companion.\n"
+        "Review the extracted fields from the patient's medical report and write a warm, "
+        "reassuring, and informative personal health summary directly to the user.\n"
+        "Explain any complex findings in simple terms, emphasize any vital instructions or flags "
+        "described in the report, and offer gentle encouragement.\n"
+        "Keep the summary brief and clear (max 3-4 sentences).\n\n"
+        f"Extracted Report Details:\n{fields_summary_str}\n\n"
+        f"Medical Reference Context:\n{evidence_context}\n\n"
+        "Write your summary as Baymax:"
+    )
+    
+    summary_text = "I have reviewed your report. Please consult a doctor for a detailed diagnosis."
+    try:
+        llm_res2 = await reasoning_pipeline.llm.generate_async(step2_prompt)
+        summary_text = llm_res2.text
+    except Exception as e:
+        logger.error(f"Step 2: Summary generation failed: {e}")
+
+    return {
+        "extracted_fields": extracted_fields,
+        "summary": summary_text,
+    }
+
+
 @app.post("/ocr")
 async def ocr_endpoint(file: UploadFile = File(...), lang: str = Form("eng")):
     """
-    Proxy OCR to AI Engine 2 (Tesseract + PyMuPDF).
+    Process OCR and medical report parsing. Supports PDFs locally using PyMuPDF and RAG-based extraction.
     Falls back gracefully when AE2 is unavailable.
     """
     file_bytes = await file.read()
+    
+    is_pdf = False
+    if file.filename and file.filename.lower().endswith(".pdf"):
+        is_pdf = True
+    elif file.content_type == "application/pdf":
+        is_pdf = True
+
+    if is_pdf:
+        logger.info(f"Processing PDF document: {file.filename} via local extraction and RAG pipeline")
+        raw_text = _extract_pdf_text_local(file_bytes)
+        if not raw_text.strip():
+            return JSONResponse(
+                status_code=200,
+                content={
+                    "available": True,
+                    "raw_text": "",
+                    "error": "No text could be extracted from the PDF file.",
+                    "document_type": "pdf",
+                    "extracted_fields": {},
+                    "summary": "I could not find any text in this document to summarize.",
+                    "overall_confidence": 0.0,
+                }
+            )
+        
+        analysis = await _process_medical_document_rag(raw_text)
+        return JSONResponse(
+            status_code=200,
+            content={
+                "available": True,
+                "raw_text": raw_text,
+                "document_type": "pdf",
+                "extracted_fields": analysis["extracted_fields"],
+                "summary": analysis["summary"],
+                "overall_confidence": 0.95,
+            }
+        )
+
+    # Otherwise, try proxying to AE2 for images
     try:
         return await _proxy_to_ae2(
             "/ocr",
@@ -433,14 +569,40 @@ async def ocr_endpoint(file: UploadFile = File(...), lang: str = Form("eng")):
             data={"lang": lang, "psm": "3", "oem": "3"},
         )
     except HTTPException:
+        # AE2 is offline, but we can try local OCR on image or return error
+        raw_text = ""
+        try:
+            import pytesseract
+            from PIL import Image
+            import io
+            image = Image.open(io.BytesIO(file_bytes))
+            raw_text = pytesseract.image_to_string(image, lang=lang)
+        except Exception as ocr_err:
+            logger.warning(f"Local image OCR failed: {ocr_err}")
+
+        if raw_text.strip():
+            analysis = await _process_medical_document_rag(raw_text)
+            return JSONResponse(
+                status_code=200,
+                content={
+                    "available": True,
+                    "raw_text": raw_text,
+                    "document_type": "image",
+                    "extracted_fields": analysis["extracted_fields"],
+                    "summary": analysis["summary"],
+                    "overall_confidence": 0.85,
+                }
+            )
+
         return JSONResponse(
             status_code=200,
             content={
                 "available": False,
                 "raw_text": "",
-                "error": "AI Engine 2 is offline. OCR requires AE2 with Tesseract installed.",
+                "error": "AI Engine 2 is offline and local OCR could not parse the frame.",
                 "document_type": "unknown",
-                "extracted_fields": [],
+                "extracted_fields": {},
+                "summary": "I was unable to analyze this document because the perception backend is offline.",
                 "overall_confidence": 0.0,
             },
         )

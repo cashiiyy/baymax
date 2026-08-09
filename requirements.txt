@@ -14,6 +14,7 @@ TTS>=0.22.0
 pytesseract>=0.3.10
 opencv-python-headless>=4.8.0
 pillow>=10.0.0
+pymupdf>=1.22.0
 
 # Vector DB & Embeddings
 faiss-cpu>=1.7.4

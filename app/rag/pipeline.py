@@ -226,19 +226,20 @@ class RAGPipeline:
         texts = []
         metadatas = []
 
-        for record in records:
+        for idx, record in enumerate(records):
             # Use to_text() if available (JSON was serialized from dataclass)
             # Otherwise join all string fields
             text = self._record_to_text(record)
             if not text.strip():
                 continue
             texts.append(text)
+            rec_id = record.get("disease_id") or record.get("symptom_id") \
+                     or record.get("medicine_id") or record.get("aid_id") \
+                     or record.get("record_id") or record.get("") or f"idx_{idx}"
             metadatas.append({
                 "source": source,
                 "collection": collection_name,
-                "record_id": record.get("disease_id") or record.get("symptom_id")
-                             or record.get("medicine_id") or record.get("aid_id")
-                             or record.get("record_id") or "",
+                "record_id": str(rec_id),
             })
 
         if not texts:

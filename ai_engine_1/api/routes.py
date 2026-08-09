@@ -5,6 +5,7 @@ from typing import List, Dict, Any, Optional
 from ai_engine_1.pipeline.reasoning_pipeline import reasoning_pipeline, ReasoningPipelineResponse
 from ai_engine_1.embeddings.embedder import AdvancedEmbedder
 from ai_engine_1.retriever.retriever import AdvancedRAGRetriever
+from app.rag.pipeline import RAGPipeline
 from ai_engine_1.planner.planner import IntelligentQueryPlanner, ExecutionPlan
 from ai_engine_1.observability.metrics import metrics_collector
 from ai_engine_1.llm.llm_engine import ProductionLLMEngine
@@ -14,6 +15,7 @@ router = APIRouter(prefix="/engine1", tags=["AI Engine 1"])
 
 embedder = AdvancedEmbedder()
 retriever = AdvancedRAGRetriever()
+rag_pipeline = RAGPipeline()
 planner = IntelligentQueryPlanner()
 llm = ProductionLLMEngine()
 
@@ -45,8 +47,15 @@ async def reason_endpoint(req: ReasonRequest):
 
 @router.post("/retrieve")
 async def retrieve_endpoint(req: RetrieveRequest):
-    q_vec = await embedder.encode_async(req.query)
-    results = retriever.search_hybrid(q_vec, req.query, top_k=req.top_k)
+    rag_res = rag_pipeline.search(req.query, top_k=req.top_k)
+    results = []
+    for r in rag_res.results:
+        results.append({
+            "content": r.text,
+            "source_file": r.metadata.get("source", r.collection),
+            "score": r.score,
+            "citation": f"[{r.metadata.get('source', r.collection)}]"
+        })
     return {"query": req.query, "results": results}
 
 @router.post("/embed")

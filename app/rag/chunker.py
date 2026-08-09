@@ -36,7 +36,10 @@ class DocumentChunk:
     def __post_init__(self) -> None:
         if not self.chunk_id:
             import hashlib
-            self.chunk_id = hashlib.sha1(self.text.encode()).hexdigest()[:16]
+            # Include sorted metadata representation to guarantee unique chunk IDs
+            meta_str = "".join(f"{k}:{v}" for k, v in sorted(self.metadata.items()))
+            payload = f"{self.text}-{meta_str}"
+            self.chunk_id = hashlib.sha1(payload.encode()).hexdigest()[:16]
 
 
 class DocumentChunker:

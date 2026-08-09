@@ -10,6 +10,7 @@ from ai_engine_1.safety.safety_engine import MedicalSafetyEngine, SafetyReport
 from ai_engine_1.explainability.explainer import ExplainabilityEngine, ConfidenceScore
 from ai_engine_1.tools.medical_tools import MedicalToolRegistry
 from ai_engine_1.embeddings.embedder import AdvancedEmbedder
+from app.rag.pipeline import RAGPipeline
 from ai_engine_1.pipeline.observation_schema import (
     VisionObservation,
     ObservationReasoningResponse,
@@ -41,7 +42,8 @@ class MedicalReasoningPipeline:
         prompts: PromptManager = None,
         safety: MedicalSafetyEngine = None,
         explainer: ExplainabilityEngine = None,
-        tools: MedicalToolRegistry = None
+        tools: MedicalToolRegistry = None,
+        rag_pipeline: RAGPipeline = None
     ):
         self.planner = planner or IntelligentQueryPlanner()
         self.retriever = retriever or AdvancedRAGRetriever()
@@ -51,6 +53,7 @@ class MedicalReasoningPipeline:
         self.safety = safety or MedicalSafetyEngine()
         self.explainer = explainer or ExplainabilityEngine()
         self.tools = tools or MedicalToolRegistry()
+        self.rag_pipeline = rag_pipeline or RAGPipeline()
 
     async def execute_async(self, query: str, user_history: str = "") -> ReasoningPipelineResponse:
         start_time = time.time()
@@ -69,11 +72,20 @@ class MedicalReasoningPipeline:
 
         # Stage 4 & 5: RAG Retrieval & Evidence Ranking
         evidence_docs = []
+        evidence_text = "No evidence documents retrieved."
         if plan.rag_required:
-            q_vector = await self.embedder.encode_async(query)
-            evidence_docs = self.retriever.search_hybrid(q_vector, query, top_k=3)
-
-        evidence_text = self.retriever.format_evidence_block(evidence_docs)
+            try:
+                rag_res = self.rag_pipeline.search(query, top_k=3)
+                evidence_text = rag_res.to_context_string()
+                for r in rag_res.results:
+                    evidence_docs.append({
+                        "content": r.text,
+                        "source_file": r.metadata.get("source", r.collection),
+                        "score": r.score,
+                        "citation": f"[{r.metadata.get('source', r.collection)}]"
+                    })
+            except Exception:
+                pass
 
         # Stage 6: LLM Reasoning
         assembled_prompt = self.prompts.assemble_reasoning_prompt(
@@ -145,14 +157,21 @@ class MedicalReasoningPipeline:
         # Step 3: RAG retrieval for relevant medical context
         search_query = f"{observation.event_type} {observation.facial_state} {observation.movement_state}"
         evidence_docs = []
+        evidence_text = ""
         try:
-            q_vector = await self.embedder.encode_async(search_query)
-            evidence_docs = self.retriever.search_hybrid(q_vector, search_query, top_k=3)
+            rag_res = self.rag_pipeline.search(search_query, top_k=3)
+            evidence_text = rag_res.to_context_string()
+            for r in rag_res.results:
+                evidence_docs.append({
+                    "content": r.text,
+                    "source_file": r.metadata.get("source", r.collection),
+                    "score": r.score,
+                    "citation": f"[{r.metadata.get('source', r.collection)}]"
+                })
         except Exception:
             pass  # RAG is optional for observations
 
         if evidence_docs:
-            evidence_text = self.retriever.format_evidence_block(evidence_docs)
             obs_prompt += f"\n\n## RELEVANT MEDICAL CONTEXT (from knowledge base)\n{evidence_text}"
 
         # Step 4: LLM reasoning
