@@ -45,7 +45,7 @@ function stopSpeaking() {
         try {
             currentAudioElement.pause();
             currentAudioElement.currentTime = 0;
-        } catch (_) {}
+        } catch (_) { }
         currentAudioElement = null;
     }
 }
@@ -53,7 +53,7 @@ function stopSpeaking() {
 function onVoiceToggleChange(checked) {
     voiceEnabled = checked;
     const label = document.getElementById("voiceLabel");
-    if (label) label.textContent = checked ? "🔊 Voice On" : "🔇 Muted";
+    if (label) label.textContent = checked ? "🔊 " : "🔇 ";
     if (!checked) {
         stopSpeaking();
     }
@@ -946,7 +946,7 @@ window.addEventListener("DOMContentLoaded", () => {
     if (toggle) {
         voiceEnabled = toggle.checked;
         const label = document.getElementById("voiceLabel");
-        if (label) label.textContent = toggle.checked ? "🔊 Voice On" : "🔇 Voice Off";
+        if (label) label.textContent = toggle.checked ? "🔊" : "🔇";
     }
 
     // Preload browser TTS voices (async)
