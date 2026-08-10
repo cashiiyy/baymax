@@ -37,17 +37,25 @@ let wakeWordRecognition = null;   // Browser SpeechRecognition for wake word
 let voiceEnabled = true;
 let currentAudioElement = null;
 
+function stopSpeaking() {
+    if ("speechSynthesis" in window) {
+        window.speechSynthesis.cancel();
+    }
+    if (currentAudioElement) {
+        try {
+            currentAudioElement.pause();
+            currentAudioElement.currentTime = 0;
+        } catch (_) {}
+        currentAudioElement = null;
+    }
+}
+
 function onVoiceToggleChange(checked) {
     voiceEnabled = checked;
     const label = document.getElementById("voiceLabel");
     if (label) label.textContent = checked ? "🔊 Voice On" : "🔇 Muted";
     if (!checked) {
-        if ("speechSynthesis" in window) window.speechSynthesis.cancel();
-        if (currentAudioElement) {
-            currentAudioElement.pause();
-            currentAudioElement.currentTime = 0;
-            currentAudioElement = null;
-        }
+        stopSpeaking();
     }
 }
 
@@ -166,7 +174,10 @@ async function speakText(text) {
     const toggle = document.getElementById("voiceToggle");
     if (!toggle?.checked || !voiceEnabled) return;
 
+    // Filter out standard disclaimer text from being read
     const clean = text
+        .split(/disclaimer:/i)[0]
+        .split(/educational notice:/i)[0]
         .replace(/[*#_`>|🚨🩹🫀🦟🩺🐍🌡️🫁📋💡🔥🐍😐🔲💡📋👤]/gu, "")
         .replace(/<[^>]*>/g, "")
         .replace(/\n+/g, " ")
@@ -176,7 +187,13 @@ async function speakText(text) {
     // 1. Try AE2 TTS
     if (ae2Online && ai2) {
         try {
-            await ai2.tts(clean);
+            const audio = await ai2.tts(clean);
+            if (audio) {
+                if (currentAudioElement) {
+                    currentAudioElement.pause();
+                }
+                currentAudioElement = audio;
+            }
             return;
         } catch (err) {
             console.warn("[BAYMAX] AE2 TTS failed:", err.message);
@@ -204,6 +221,7 @@ async function speakText(text) {
                 const audioUrl = URL.createObjectURL(blob);
                 const audio = new Audio(audioUrl);
                 audio.onended = () => URL.revokeObjectURL(audioUrl);
+                currentAudioElement = audio; // Keep track of local fallback audio too!
                 await audio.play();
                 return;
             }
@@ -231,6 +249,7 @@ async function speakText(text) {
 
 // ── Mic Recording (AE2 Whisper STT → Browser Web Speech fallback) ─────────────
 async function toggleMicRecording() {
+    stopSpeaking();
     if (isRecording) { stopMicRecording(); return; }
     await startMicRecording();
 }
@@ -241,6 +260,7 @@ let audioStream = null;
 let silenceTimer = null;
 
 async function startMicRecording() {
+    stopSpeaking();
     if (!navigator.mediaDevices?.getUserMedia) {
         // Fallback directly to browser speech recognition
         startBrowserSTT();
@@ -421,6 +441,7 @@ async function sendMessage() {
 }
 
 async function submitQuery(query) {
+    stopSpeaking();
     const loadingId = appendMessage(
         `<span class="typing-dots"><span></span><span></span><span></span></span> BAYMAX is thinking…`,
         "assistant"
@@ -911,6 +932,14 @@ function initIntro() {
 // ── Boot ──────────────────────────────────────────────────────────────────────
 window.addEventListener("DOMContentLoaded", () => {
     initIntro();
+
+    // Setup menu button toggle (collapses sidebar to show chat interface only)
+    const menuBtn = document.querySelector(".chat-menu-btn");
+    if (menuBtn) {
+        menuBtn.addEventListener("click", () => {
+            document.body.classList.toggle("chat-only");
+        });
+    }
 
     // Init voice toggle label
     const toggle = document.getElementById("voiceToggle");

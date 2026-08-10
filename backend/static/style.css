@@ -898,3 +898,9 @@ body {
   .chat-header { padding: 0 12px; }
   .app-layout { padding: 12px; }
 }
+
+/* Toggling Sidebar Collapsed State (Chat Interface Only) */
+body.chat-only .sidebar {
+  display: none !important;
+}
+
