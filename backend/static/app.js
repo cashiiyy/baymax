@@ -15,20 +15,20 @@
 "use strict";
 
 // ── Constants ─────────────────────────────────────────────────────────────────
-const API_BASE           = "";          // Backend is same origin
+const API_BASE = "";          // Backend is same origin
 const AE2_HEALTH_FAST_MS = 5_000;
 const AE2_HEALTH_SLOW_MS = 30_000;
 
 // ── Global State ──────────────────────────────────────────────────────────────
-let ai2          = null;
-let ae2Online    = false;
+let ai2 = null;
+let ae2Online = false;
 let ae2PollCount = 0;
 
-let isRecording   = false;
+let isRecording = false;
 let mediaRecorder = null;
-let micChunks     = [];
+let micChunks = [];
 
-let cameraStream   = null;
+let cameraStream = null;
 let _visionInterval = null;   // auto-analysis timer handle
 let wakeWordActive = false;
 let wakeWordRecognition = null;   // Browser SpeechRecognition for wake word
@@ -60,9 +60,9 @@ async function initSDK() {
     }
 
     ai2 = new BaymaxAI2({
-        baseUrl:  window.BAYMAX_AI2_URL || "http://100.79.169.64:8001",
+        baseUrl: window.BAYMAX_AI2_URL || "http://100.79.169.64:8001",
         wakeWord: "hey baymax",
-        debug:    false,
+        debug: false,
     });
 
     await checkAE2Health();
@@ -81,22 +81,22 @@ async function initSDK() {
 async function checkAE2Health() {
     if (!ai2) return;
     try {
-        const r    = await fetch(`${API_BASE}/proxy/ae2-health`);
+        const r = await fetch(`${API_BASE}/proxy/ae2-health`);
         const data = await r.json();
 
         const online = data.status === "ok" ||
-                       data.status === "healthy" ||
-                       data.status === "degraded";
+            data.status === "healthy" ||
+            data.status === "degraded";
 
         ae2Online = online && data.status !== "offline";
 
         if (data.status === "ok" || data.status === "healthy") {
-            setAE2Status(true,  "AE2 Ready ✓",    "#22c55e");
+            setAE2Status(true, "AE2 Ready ✓", "#22c55e");
         } else if (data.status === "degraded") {
-            setAE2Status(true,  "AE2 Degraded ⚠", "#f59e0b");
+            setAE2Status(true, "AE2 Degraded ⚠", "#f59e0b");
             ae2Online = true;
         } else {
-            setAE2Status(false, "AE2 Offline",    "#ef4444");
+            setAE2Status(false, "AE2 Offline", "#ef4444");
         }
 
         showAE2Components(data);
@@ -107,25 +107,25 @@ async function checkAE2Health() {
 }
 
 function setAE2Status(online, label, colour) {
-    const dot  = document.getElementById("ae2StatusDot");
+    const dot = document.getElementById("ae2StatusDot");
     const text = document.getElementById("ae2StatusText");
     if (!dot || !text) return;
     dot.style.background = colour;
-    dot.style.boxShadow  = `0 0 0 3px ${colour}33`;
-    text.textContent     = label;
+    dot.style.boxShadow = `0 0 0 3px ${colour}33`;
+    text.textContent = label;
 }
 
 function showAE2Components(data) {
-    const panel     = document.getElementById("ae2ComponentsPanel");
+    const panel = document.getElementById("ae2ComponentsPanel");
     const container = document.getElementById("ae2Components");
     if (!panel || !container) return;
 
     let rows = "";
     if (Array.isArray(data.models) && data.models.length) {
         rows = data.models.map(m => {
-            const ok     = m.loaded === true;
+            const ok = m.loaded === true;
             const colour = ok ? "#22c55e" : "#f59e0b";
-            const label  = ok ? `✓ loaded (${m.device})` : "⚠ not loaded";
+            const label = ok ? `✓ loaded (${m.device})` : "⚠ not loaded";
             return `<div style="display:flex;justify-content:space-between;padding:2px 0;gap:8px;">
                         <span>${m.name}</span>
                         <span style="color:${colour};font-weight:600;">${label}</span>
@@ -146,7 +146,7 @@ function showAE2Components(data) {
         }
     } else if (data.components && typeof data.components === "object") {
         rows = Object.entries(data.components).map(([name, status]) => {
-            const ok     = status === "ready" || status === "ok";
+            const ok = status === "ready" || status === "ok";
             const colour = ok ? "#22c55e" : "#f59e0b";
             return `<div style="display:flex;justify-content:space-between;padding:2px 0;gap:8px;">
                         <span>${name}</span>
@@ -200,9 +200,9 @@ async function speakText(text) {
                 const binaryStr = atob(data.audio_base64);
                 const bytes = new Uint8Array(binaryStr.length);
                 for (let i = 0; i < binaryStr.length; i++) bytes[i] = binaryStr.charCodeAt(i);
-                const blob    = new Blob([bytes], { type: "audio/mp3" });
+                const blob = new Blob([bytes], { type: "audio/mp3" });
                 const audioUrl = URL.createObjectURL(blob);
-                const audio   = new Audio(audioUrl);
+                const audio = new Audio(audioUrl);
                 audio.onended = () => URL.revokeObjectURL(audioUrl);
                 await audio.play();
                 return;
@@ -215,10 +215,10 @@ async function speakText(text) {
     // 3. Browser Web Speech API fallback
     if ("speechSynthesis" in window) {
         window.speechSynthesis.cancel();
-        const utterance      = new SpeechSynthesisUtterance(clean.slice(0, 500));
-        utterance.rate       = 0.95;
-        utterance.pitch      = 0.9;
-        utterance.volume     = 1.0;
+        const utterance = new SpeechSynthesisUtterance(clean.slice(0, 500));
+        utterance.rate = 0.95;
+        utterance.pitch = 0.9;
+        utterance.volume = 1.0;
         // Try to pick a natural-sounding voice
         const voices = window.speechSynthesis.getVoices();
         const preferred = voices.find(v =>
@@ -250,7 +250,7 @@ async function startMicRecording() {
     try {
         const stream = await navigator.mediaDevices.getUserMedia({ audio: true, video: false });
         audioStream = stream;
-        micChunks    = [];
+        micChunks = [];
         mediaRecorder = new MediaRecorder(stream, { mimeType: "audio/webm" });
 
         mediaRecorder.ondataavailable = (e) => { if (e.data.size > 0) micChunks.push(e.data); };
@@ -268,14 +268,14 @@ async function startMicRecording() {
 
         const bufferLength = audioAnalyser.frequencyBinCount;
         const dataArray = new Uint8Array(bufferLength);
-        
+
         let lastSoundTime = Date.now();
         const silenceThreshold = 10; // low volume threshold
-        
+
         function detectSilence() {
             if (!isRecording) return;
             audioAnalyser.getByteFrequencyData(dataArray);
-            
+
             // Calculate average volume
             let sum = 0;
             for (let i = 0; i < bufferLength; i++) {
@@ -324,7 +324,7 @@ function cleanupAudioContext() {
         audioStream = null;
     }
     if (audioContext) {
-        audioContext.close().catch(() => {});
+        audioContext.close().catch(() => { });
         audioContext = null;
     }
     audioAnalyser = null;
@@ -338,9 +338,9 @@ function startBrowserSTT() {
         return;
     }
 
-    const recognition      = new SpeechRecognition();
+    const recognition = new SpeechRecognition();
     recognition.continuous = false;
-    recognition.lang       = "en-US";
+    recognition.lang = "en-US";
     recognition.interimResults = false;
 
     const btn = document.getElementById("micBtn");
@@ -427,10 +427,10 @@ async function submitQuery(query) {
     );
 
     try {
-        const res  = await fetch(`${API_BASE}/chat`, {
-            method:  "POST",
+        const res = await fetch(`${API_BASE}/chat`, {
+            method: "POST",
             headers: { "Content-Type": "application/json" },
-            body:    JSON.stringify({ user_id: 1, query }),
+            body: JSON.stringify({ user_id: 1, query }),
         });
 
         if (!res.ok) {
@@ -443,7 +443,7 @@ async function submitQuery(query) {
 
         // Detect if it's the hardcoded offline fallback
         const isOfflineFallback = text.includes("LLM backends are currently offline") ||
-                                  text.includes("OpenRouter / Ollama");
+            text.includes("OpenRouter / Ollama");
 
         let html = formatMarkdown(text);
         if (isOfflineFallback) {
@@ -479,7 +479,7 @@ async function handleOCRUpload(event) {
 
     appendMessage(`📄 Uploaded: **${file.name}**`, "user");
     const loadingId = appendMessage("🔬 Scanning document via Medical OCR…", "assistant");
-    const statusEl  = document.getElementById("ocrStatus");
+    const statusEl = document.getElementById("ocrStatus");
     if (statusEl) { statusEl.style.display = "block"; statusEl.textContent = "Scanning…"; }
 
     // Reset file input so same file can be re-uploaded
@@ -551,7 +551,7 @@ async function handleOCRUpload(event) {
             }
         } else {
             html = "⚠️ No readable text could be extracted from this document. " +
-                   "Please ensure the image is clear and contains printed text.";
+                "Please ensure the image is clear and contains printed text.";
         }
 
         updateMessage(loadingId, html);
@@ -575,8 +575,8 @@ async function handleOCRUpload(event) {
 
 // ── Vision / Webcam ───────────────────────────────────────────────────────────
 async function toggleCamera() {
-    const videoEl    = document.getElementById("webcamVideo");
-    const cameraBtn  = document.getElementById("cameraBtn");
+    const videoEl = document.getElementById("webcamVideo");
+    const cameraBtn = document.getElementById("cameraBtn");
     const captureBtn = document.getElementById("captureBtn");
 
     if (cameraStream) {
@@ -585,8 +585,8 @@ async function toggleCamera() {
         _visionInterval = null;
         cameraStream.getTracks().forEach(t => t.stop());
         cameraStream = null;
-        if (videoEl)    videoEl.style.display    = "none";
-        if (cameraBtn)  cameraBtn.textContent    = "📷 Start Camera";
+        if (videoEl) videoEl.style.display = "none";
+        if (cameraBtn) cameraBtn.textContent = "📷 Start Camera";
         if (captureBtn) captureBtn.style.display = "none";
         return;
     }
@@ -599,7 +599,7 @@ async function toggleCamera() {
             await videoEl.play();
             videoEl.style.display = "block";
         }
-        if (cameraBtn)  cameraBtn.textContent    = "⏹ Stop Camera";
+        if (cameraBtn) cameraBtn.textContent = "⏹ Stop Camera";
         // Hide manual capture button — auto-analysis handles it
         if (captureBtn) captureBtn.style.display = "none";
 
@@ -612,7 +612,7 @@ async function toggleCamera() {
 }
 
 async function captureAndAnalyse() {
-    const videoEl  = document.getElementById("webcamVideo");
+    const videoEl = document.getElementById("webcamVideo");
     const resultEl = document.getElementById("visionResult");
 
     if (!videoEl) return;
@@ -620,10 +620,10 @@ async function captureAndAnalyse() {
 
     try {
         // Capture frame to canvas, convert to JPEG blob (avoids OpenCV format issues)
-        const canvas    = document.createElement("canvas");
-        canvas.width    = videoEl.videoWidth  || 640;
-        canvas.height   = videoEl.videoHeight || 480;
-        const ctx       = canvas.getContext("2d");
+        const canvas = document.createElement("canvas");
+        canvas.width = videoEl.videoWidth || 640;
+        canvas.height = videoEl.videoHeight || 480;
+        const ctx = canvas.getContext("2d");
         ctx.drawImage(videoEl, 0, 0);
 
         // Convert to JPEG blob
@@ -682,14 +682,14 @@ async function captureAndAnalyse() {
 
 // ── Wake Word (Browser SpeechRecognition + AI Engine 1 fallback) ─────────────
 async function toggleWakeWord() {
-    const btn    = document.getElementById("wakeWordBtn");
+    const btn = document.getElementById("wakeWordBtn");
     const status = document.getElementById("wakeWordStatus");
     if (status) status.style.display = "block";
 
     if (wakeWordActive) {
         // Stop wake word detection
         stopWakeWordDetection();
-        if (btn)    btn.textContent    = "🎙️ Enable Wake Word";
+        if (btn) btn.textContent = "🎙️ Enable Wake Word";
         if (status) status.textContent = "";
         return;
     }
@@ -708,7 +708,7 @@ async function startAE1WakeWord(btn, status) {
     }
 
     wakeWordActive = true;
-    if (btn)    btn.textContent    = "🛑 Disable Wake Word";
+    if (btn) btn.textContent = "🛑 Disable Wake Word";
     if (status) status.textContent = `🎙️ Listening for "Hey Baymax" (AI Engine 1)…`;
 
     const checkChunk = () => {
@@ -766,12 +766,12 @@ function startBrowserWakeWord(btn, status) {
     }
 
     if (wakeWordRecognition) {
-        try { wakeWordRecognition.stop(); } catch(_) {}
+        try { wakeWordRecognition.stop(); } catch (_) { }
     }
 
     wakeWordRecognition = new SpeechRecognition();
-    wakeWordRecognition.continuous    = true;
-    wakeWordRecognition.lang          = "en-US";
+    wakeWordRecognition.continuous = true;
+    wakeWordRecognition.lang = "en-US";
     wakeWordRecognition.interimResults = true;
 
     wakeWordRecognition.onresult = (event) => {
@@ -779,10 +779,10 @@ function startBrowserWakeWord(btn, status) {
             const transcript = event.results[i][0].transcript.toLowerCase();
             if (transcript.includes("hey baymax") || transcript.includes("baymax")) {
                 if (status) status.textContent = "🔔 Wake word detected! Activating mic...";
-                
+
                 // Stop wake word listening temporarily so audio input isn't locked
-                try { wakeWordRecognition.stop(); } catch(_) {}
-                
+                try { wakeWordRecognition.stop(); } catch (_) { }
+
                 // Trigger recording
                 toggleMicRecording();
                 break;
@@ -802,14 +802,14 @@ function startBrowserWakeWord(btn, status) {
     wakeWordRecognition.onend = () => {
         // Restart continuously if still active and not recording
         if (wakeWordActive && !isRecording) {
-            try { wakeWordRecognition.start(); } catch (_) {}
+            try { wakeWordRecognition.start(); } catch (_) { }
         }
     };
 
     try {
         wakeWordRecognition.start();
         wakeWordActive = true;
-        if (btn)    btn.textContent    = "🛑 Disable Wake Word";
+        if (btn) btn.textContent = "🛑 Disable Wake Word";
         if (status) status.textContent = `🎙️ Listening for "Hey Baymax"...`;
     } catch (err) {
         if (status) status.textContent = `⚠️ Could not start wake word: ${err.message}`;
@@ -821,21 +821,21 @@ function stopWakeWordDetection() {
 
     // Stop AE2 wake word if active
     if (ai2) {
-        try { ai2.stopWakeWordDetection(); } catch (_) {}
+        try { ai2.stopWakeWordDetection(); } catch (_) { }
     }
 
     // Stop browser wake word if active
     if (wakeWordRecognition) {
-        try { wakeWordRecognition.stop(); } catch (_) {}
+        try { wakeWordRecognition.stop(); } catch (_) { }
         wakeWordRecognition = null;
     }
 }
 
 // ── Message Helpers ───────────────────────────────────────────────────────────
 function appendMessage(text, role) {
-    const chat    = document.getElementById("chatMessages");
+    const chat = document.getElementById("chatMessages");
     const wrapper = document.createElement("div");
-    const msgId   = "msg-" + Date.now() + "-" + Math.random().toString(36).slice(2, 6);
+    const msgId = "msg-" + Date.now() + "-" + Math.random().toString(36).slice(2, 6);
     wrapper.className = `msg ${role}`;
 
     if (role === "assistant") {
@@ -866,12 +866,12 @@ function formatMarkdown(text) {
     if (!text) return "";
     return text
         .replace(/### (.*?)(\n|$)/g, "<h3>$1</h3>")
-        .replace(/## (.*?)(\n|$)/g,  "<h3>$1</h3>")
-        .replace(/\*\*(.*?)\*\*/g,   "<strong>$1</strong>")
-        .replace(/\*(.*?)\*/g,       "<em>$1</em>")
-        .replace(/`(.*?)`/g,         "<code>$1</code>")
+        .replace(/## (.*?)(\n|$)/g, "<h3>$1</h3>")
+        .replace(/\*\*(.*?)\*\*/g, "<strong>$1</strong>")
+        .replace(/\*(.*?)\*/g, "<em>$1</em>")
+        .replace(/`(.*?)`/g, "<code>$1</code>")
         .replace(/\n\n/g, "<br><br>")
-        .replace(/\n/g,   "<br>");
+        .replace(/\n/g, "<br>");
 }
 
 // ── Intro Video Handling ──────────────────────────────────────────────────────
@@ -889,14 +889,14 @@ function initIntro() {
     };
 
     video.addEventListener("ended", hideIntro);
-    
+
     if (skipBtn) {
         skipBtn.addEventListener("click", hideIntro);
     }
-    
+
     // Fallback if video fails to play or loads too slowly
     video.addEventListener("error", hideIntro);
-    
+
     // If the browser blocks autoplay completely, we might need a timeout
     // but typically muted autoplay works. We add a fallback just in case:
     let isPlaying = video.currentTime > 0 && !video.paused && !video.ended && video.readyState > 2;

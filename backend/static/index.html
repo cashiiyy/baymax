@@ -12,139 +12,228 @@
     <link rel="icon" type="image/png" href="/static/icon.png">
     <link rel="apple-touch-icon" href="/static/icon.png">
 
-    <!-- Fonts -->
+    <!-- Nunito Sans — Figma design font -->
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link
-        href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:ital,wght@0,300;0,400;0,500;0,600;0,700;0,800;1,400&display=swap"
+        href="https://fonts.googleapis.com/css2?family=Nunito+Sans:ital,opsz,wght@0,6..12,400;0,6..12,600;0,6..12,700;1,6..12,400&display=swap"
         rel="stylesheet">
 
     <!-- Stylesheet -->
     <link rel="stylesheet" href="/static/style.css">
 
-    <!-- AE2 SDK config — set before loading the SDK -->
+    <!-- AE2 SDK config — set before loading SDK -->
     <script>
         window.BAYMAX_AI2_URL = 'http://100.79.169.64:8001';
     </script>
 </head>
 
 <body>
-    <!-- ── Intro Video Overlay ────────────────────────────── -->
+
+    <!-- ── Intro Video Overlay ─────────────────────────────── -->
+    <!-- DO NOT REMOVE — wired to app.js -->
     <div id="introOverlay" class="intro-overlay">
         <video id="introVideo" src="/static/baymax_intro.mp4" autoplay playsinline></video>
         <button id="skipIntroBtn" class="skip-intro-btn">Skip Intro</button>
     </div>
-    <!-- ── Top Header ─────────────────────────────── -->
+
+    <!-- ══════════════════════════════════════════════════════
+         HEADER
+         Figma: Header #1:4 — row, space-between, center
+                80px height, white bg, #F4CCC4 bottom border
+                padding: 0 32px
+         ══════════════════════════════════════════════════════ -->
     <header class="header">
+
+        <!-- LEFT: Brand Logo + Name + Tagline
+             Figma: Container #1:6 — row, 12px gap, hug
+        -->
         <div class="brand">
+            <!-- Logo — 3D Baymax character (image 3), no red circle background
+                 60×60 circle, object-fit:contain, soft glow ring -->
             <div class="brand-logo" title="B.A.Y.M.A.X. AI">
-                <img src="/static/icon.png" alt="BAYMAX"
+                <img src="/static/baymax_char.png" alt="BAYMAX"
                     onerror="this.style.display='none'; this.nextElementSibling.style.display='flex';">
-                <span class="brand-logo-text" style="display:none;">+</span>
+                <span class="brand-logo-text" style="display:none;">B</span>
             </div>
+
+            <!-- Text column: Figma Container #1:14 — column, hug -->
             <div class="brand-info">
-                <h1 class="brand-title">
-                    B.A.Y.M.A.X.
-                    <span class="brand-version">v2</span>
-                </h1>
+                <!-- Title row: Figma Container #1:15 — row, 8px gap, center -->
+                <div class="brand-title-row">
+                    <!-- Figma EL-fc89f38c: "B.A.Y.M.A.X." 24px Bold #CC2426 0.22em spacing -->
+                    <span class="brand-title">B.A.Y.M.A.X.</span>
+                    <!-- Figma EL-1a8f58d4: "V2" 12px Bold #CC2426 on #FCEBE7 pill -->
+                    <span class="brand-version">V2</span>
+                </div>
+                <!-- Figma EL-7f96bd57: 14px Regular #9A605E -->
                 <p class="brand-tagline">Multimodal Health &amp; First-Aid Assistant</p>
             </div>
         </div>
 
+        <!-- RIGHT: Status Badge
+             Figma: Background+Border #1:22
+             row, 8px 16px padding, #FFF4EF bg, #F4CCC4 border, pill
+        -->
         <div class="header-status">
-            <span class="status-indicator" id="backendStatusDot" title="Backend Server Status"></span>
-            <span class="status-text" id="backendStatusText">Backend Active</span>
+            <!-- Backend dot + text: Figma Container #1:23 -->
+            <div class="status-group">
+                <span class="status-indicator" id="backendStatusDot" title="Backend Server Status"></span>
+                <span class="status-text" id="backendStatusText">Backend Active</span>
+            </div>
+            <!-- Figma: Vertical Divider #1:26 — 1×16 #F4CCC4 -->
             <div class="status-divider"></div>
-            <span class="status-indicator" id="ae2StatusDot"
-                style="background:#9CA3AF; box-shadow: 0 0 0 3px rgba(156,163,175,0.2);"
-                title="AI Engine 2 Status"></span>
-            <span class="status-text" id="ae2StatusText">AE2 Checking…</span>
+            <!-- AE2 dot + text: Figma Container #1:27 -->
+            <div class="status-group">
+                <span class="status-indicator" id="ae2StatusDot" style="background:#9CA3AF;"
+                    title="AI Engine 2 Status"></span>
+                <span class="status-text" id="ae2StatusText">AE2 Checking…</span>
+            </div>
         </div>
     </header>
 
-    <!-- ── Main Container ─────────────────────────── -->
+    <!-- ══════════════════════════════════════════════════════
+         APP LAYOUT
+         Figma: Main #1:30 — row, 28px padding, 28px gap, fill
+         ══════════════════════════════════════════════════════ -->
     <div class="app-layout">
 
-        <!-- ── Sidebar ─────────────────────────────── -->
+        <!-- ────────────────────────────────────────────────
+             SIDEBAR
+             Figma: Aside #1:31 — 346px, column, 20px gap
+             ──────────────────────────────────────────────── -->
         <aside class="sidebar">
 
-            <!-- Quick Health Topics -->
+            <!-- SECTION: Quick Health Topics
+                 Figma: Section #1:32 — white, 12px radius, 20px padding, 16px gap, shadow
+            -->
             <div class="panel">
+                <!-- Heading 2: Figma #1:34 — row, 8px gap
+                     Heart icon: Figma Rectangle #2:289 — 20×20 FIT image (heart) -->
                 <h2 class="panel-title">
-                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+                        stroke-linecap="round" stroke-linejoin="round">
                         <path
                             d="M19 14c1.49-1.46 3-3.21 3-5.5A5.5 5.5 0 0 0 16.5 3c-1.76 0-3 .5-4.5 2-1.5-1.5-2.74-2-4.5-2A5.5 5.5 0 0 0 2 8.5c0 2.3 1.5 4.05 3 5.5l7 7Z" />
                     </svg>
                     Quick Health Topics
                 </h2>
+
+                <!-- 6 Topic Buttons: Figma EL-2ab985ac — fill, 16px radius, #FFF4EF, #F4CCC4 border -->
                 <div class="topic-grid">
                     <button class="topic-btn" id="topicBurns"
-                        onclick="quickQuery('What are the first aid steps for burns?')">🔥 Burns First Aid</button>
-                    <button class="topic-btn" id="topicCPR" onclick="quickQuery('How to perform CPR correctly?')">🫀 CPR
-                        Protocol</button>
+                        onclick="quickQuery('What are the first aid steps for burns?')">
+                        🔥 Burns First Aid
+                    </button>
+                    <button class="topic-btn" id="topicCPR" onclick="quickQuery('How to perform CPR correctly?')">
+                        💖 CPR Protocol
+                    </button>
                     <button class="topic-btn" id="topicDengue"
-                        onclick="quickQuery('What are the symptoms of Dengue fever?')">🦟 Dengue Symptoms</button>
-                    <button class="topic-btn" id="topicBP" onclick="quickQuery('How to manage high blood pressure?')">🩺
-                        Hypertension</button>
+                        onclick="quickQuery('What are the symptoms of Dengue fever?')">
+                        🦟 Dengue Symptoms
+                    </button>
+                    <button class="topic-btn" id="topicBP" onclick="quickQuery('How to manage high blood pressure?')">
+                        🩺 Hypertension
+                    </button>
                     <button class="topic-btn" id="topicSnake"
-                        onclick="quickQuery('What is the emergency first aid for a snake bite?')">🐍 Snake Bite</button>
+                        onclick="quickQuery('What is the emergency first aid for a snake bite?')">
+                        🐍 Snake Bite
+                    </button>
                     <button class="topic-btn" id="topicAsthma"
-                        onclick="quickQuery('How to relieve asthma and breathing difficulty?')">🫁 Breathing &amp;
-                        Asthma</button>
+                        onclick="quickQuery('How to relieve asthma and breathing difficulty?')">
+                        🫁 Breathing &amp; Asthma
+                    </button>
                 </div>
             </div>
 
-            <!-- Medical OCR Scanner -->
+            <!-- SECTION: Medical Report Scanner
+                 Figma: Section #1:52 — same card style
+            -->
             <div class="panel">
                 <h2 class="panel-title">
-                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+                        stroke-linecap="round" stroke-linejoin="round">
                         <rect x="3" y="3" width="18" height="18" rx="2" />
                         <path d="m21 15-5-5L5 21" />
                         <circle cx="8.5" cy="8.5" r="1.5" />
                     </svg>
-                    Medical OCR Scanner
+                    Medical Report Scanner
                 </h2>
+                <!-- Figma: EL-e9077466 description text -->
                 <p class="panel-desc">Upload a prescription, lab report, or medical image to extract text and structured
                     data.</p>
-                <input type="file" id="ocrFileInput" accept="image/*,.pdf" style="display: none;"
+
+                <!-- Hidden file input — wired to handleOCRUpload() -->
+                <input type="file" id="ocrFileInput" accept="image/*,.pdf" style="display:none;"
                     onchange="handleOCRUpload(event)">
-                <button class="btn btn-secondary w-full" id="ocrUploadBtn"
+
+                <!-- Figma: Button #1:64 — EL-b3dc4a2c: center row, #FFF4EF bg, #CC2426 border, 16px radius -->
+                <button class="btn btn-primary w-full" id="ocrUploadBtn"
                     onclick="document.getElementById('ocrFileInput').click()">
-                    📄 Upload Medical Document
+                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+                        stroke-linecap="round" stroke-linejoin="round">
+                        <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
+                        <polyline points="17 8 12 3 7 8" />
+                        <line x1="12" y1="3" x2="12" y2="15" />
+                    </svg>
+                    Upload Medical Document
                 </button>
-                <div id="ocrStatus" style="font-size:0.75rem; margin-top:8px; color: var(--text-muted); display:none;">
-                </div>
+
+                <div id="ocrStatus"
+                    style="font-size:0.8rem; margin-top:8px; color:var(--text-secondary); display:none;"></div>
             </div>
 
-            <!-- Vision Analysis -->
+            <!-- SECTION: Visual Analysis
+                 Figma: Section #1:70
+            -->
             <div class="panel">
                 <h2 class="panel-title">
-                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+                        stroke-linecap="round" stroke-linejoin="round">
                         <circle cx="12" cy="12" r="3" />
                         <path d="M2 12C2 12 5 5 12 5s10 7 10 7-3 7-10 7S2 12 2 12Z" />
                     </svg>
-                    Vision Analysis
+                    Visual Analysis
                 </h2>
                 <p class="panel-desc">Capture a webcam frame for face &amp; emotion context detection via AI Engine 2.
                 </p>
+
+                <!-- Hidden webcam video element — wired to toggleCamera() -->
                 <video id="webcamVideo" autoplay muted playsinline></video>
-                <div style="display:flex; gap:6px; flex-wrap:wrap;">
-                    <button class="btn btn-secondary" id="cameraBtn" onclick="toggleCamera()" style="flex:1;">
-                        📷 Start Camera
+
+                <div style="display:flex; gap:8px;">
+                    <!-- Figma: Button #1:81 -->
+                    <button class="btn btn-primary" id="cameraBtn" onclick="toggleCamera()" style="flex:1;">
+                        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                            stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                            <path
+                                d="M14.5 4h-5L7 7H4a2 2 0 0 0-2 2v9a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2V9a2 2 0 0 0-2-2h-3l-2.5-3z" />
+                            <circle cx="12" cy="13" r="3" />
+                        </svg>
+                        Start Camera
                     </button>
                     <button class="btn btn-secondary" id="captureBtn" onclick="captureAndAnalyse()"
                         style="flex:1; display:none;">
-                        🔍 Analyse Frame
+                        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                            stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                            <circle cx="11" cy="11" r="8" />
+                            <path d="m21 21-4.35-4.35" />
+                        </svg>
+                        Analyse Frame
                     </button>
                 </div>
+
                 <div id="visionResult"
-                    style="font-size:0.75rem; margin-top:8px; color:var(--text-muted); display:none;"></div>
+                    style="font-size:0.8rem; margin-top:8px; color:var(--text-secondary); display:none;"></div>
             </div>
 
-            <!-- Wake Word Panel -->
+            <!-- SECTION: Wake Word
+                 Figma: Section #1:87
+            -->
             <div class="panel">
                 <h2 class="panel-title">
-                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+                        stroke-linecap="round" stroke-linejoin="round">
                         <path d="M12 2a3 3 0 0 0-3 3v7a3 3 0 0 0 6 0V5a3 3 0 0 0-3-3Z" />
                         <path d="M19 10v2a7 7 0 0 1-14 0v-2" />
                         <line x1="12" y1="19" x2="12" y2="22" />
@@ -152,29 +241,73 @@
                     Wake Word
                 </h2>
                 <p class="panel-desc">Say <strong>"Hey Baymax"</strong> to activate voice input automatically.</p>
-                <button class="btn btn-secondary w-full" id="wakeWordBtn" onclick="toggleWakeWord()">
-                    🎙️ Enable Wake Word
+
+                <!-- Figma: Button #1:98 -->
+                <button class="btn btn-primary w-full" id="wakeWordBtn" onclick="toggleWakeWord()">
+                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+                        stroke-linecap="round" stroke-linejoin="round">
+                        <path d="M12 2a3 3 0 0 0-3 3v7a3 3 0 0 0 6 0V5a3 3 0 0 0-3-3Z" />
+                        <path d="M19 10v2a7 7 0 0 1-14 0v-2" />
+                        <line x1="12" y1="19" x2="12" y2="22" />
+                    </svg>
+                    Enable Wake Word
                 </button>
+
                 <div id="wakeWordStatus"
-                    style="font-size:0.75rem; margin-top:8px; color:var(--text-muted); display:none;"></div>
+                    style="font-size:0.8rem; margin-top:8px; color:var(--text-secondary); display:none;"></div>
             </div>
 
-            <!-- AE2 Components Status (hidden until AE2 responds) -->
+            <!-- AE2 Components Status — hidden until AE2 responds (managed by app.js) -->
             <div class="panel" id="ae2ComponentsPanel" style="display:none;">
                 <h2 class="panel-title">⚙️ AI Engine 2 Status</h2>
-                <div id="ae2Components" style="font-size:0.75rem; line-height:1.8;"></div>
+                <div id="ae2Components" style="font-size:0.8rem; line-height:1.8;"></div>
             </div>
 
-        </aside>
+        </aside><!-- /sidebar -->
 
-        <!-- ── Main Chat Area ──────────────────────── -->
+        <!-- ────────────────────────────────────────────────
+             MAIN CHAT AREA
+             Figma: Section #1:104
+             column, fill width, fill height, 12px radius, white, shadow
+             ──────────────────────────────────────────────── -->
         <main class="chat-wrapper">
+
+            <!-- CHAT HEADER
+                 Figma: Background #1:105 — EL-973896eb
+                 fill horizontal, 80px height, solid #CC2426
+                 Contains: Menu btn (left), Title block (centre-left), Voice toggle (right)
+            -->
             <div class="chat-header">
-                <div class="chat-header-info">
-                    <span class="chat-title">Baymax Medical Intelligence</span>
-                    <span class="chat-subtitle">Educational Assistance &amp; Symptom Reasoning</span>
+
+                <!-- LEFT SIDE: Menu button + Title
+                     Figma: Menu #3:660 at x:28 y:20 (28×40) + Container #1:106 at x:79 y:16
+                -->
+                <div class="chat-header-left">
+                    <!-- MENU BUTTON — Figma: Rectangle "Menu" #3:660 / #3:662
+                         28×40, image fill (hamburger icon)
+                         Positioned at x:28 from chat panel left edge
+                    -->
+                    <button class="chat-menu-btn" title="Menu" aria-label="Toggle sidebar menu">
+                        <span></span>
+                        <span></span>
+                        <span></span>
+                    </button>
+
+                    <!-- Title + Subtitle block
+                         Figma: Container #1:106 — column, at x:79 y:16
+                    -->
+                    <div class="chat-header-info">
+                        <!-- Figma EL-828f9f32: "Baymax Medical Intelligence" 18px SemiBold white -->
+                        <span class="chat-title">Baymax Medical Intelligence</span>
+                        <!-- Figma EL-5e207d7e: "Educational Assistance & Symptom Reasoning" 14px Regular white 90% -->
+                        <span class="chat-subtitle">Educational Assistance &amp; Symptom Reasoning</span>
+                    </div>
                 </div>
 
+                <!-- RIGHT SIDE: Voice Toggle
+                     Figma: Button #1:111 — row, green pill toggle at x:888 y:20
+                     EL-cebc20dd: 40×20 green pill with white 16×16 circle
+                -->
                 <div class="voice-toggle-wrapper" onclick="document.getElementById('voiceToggle').click()">
                     <label class="toggle-switch" onclick="event.stopPropagation()">
                         <input type="checkbox" id="voiceToggle" checked onchange="onVoiceToggleChange(this.checked)">
@@ -184,56 +317,86 @@
                 </div>
             </div>
 
-            <!-- Messages Stream -->
+            <!-- CHAT MESSAGES AREA
+                 Figma: Background #1:118 — fill, #FFF8F6 bg
+                 Contains: Safety banner + chat message bubbles (scrollable)
+            -->
             <div class="chat-messages" id="chatMessages">
-                <div class="safety-banner" role="alert">
-                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                        <path d="m21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3Z" />
-                        <line x1="12" y1="9" x2="12" y2="13" />
-                        <line x1="12" y1="17" x2="12.01" y2="17" />
-                    </svg>
-                    <span><strong>Educational Notice:</strong> B.A.Y.M.A.X. provides medical information assistance
-                        only. In case of severe symptoms or emergency, contact professional healthcare
-                        immediately.</span>
-                </div>
 
+                <!-- Baymax intro message bubble -->
                 <div class="msg assistant">
-                    <img src="/static/icon.png" class="msg-avatar" alt="Baymax" />
+                    <img src="/static/icon.png" class="msg-avatar" alt="Baymax">
                     <div class="msg-content">
-                        Hi , I am BAYMAX, your personal Healthcare companion. How may i help you ?
+                        Hi, I am BAYMAX, your personal Healthcare companion. How may I help you?
                     </div>
                 </div>
+
+            </div><!-- /chat-messages -->
+
+            <!-- EDUCATIONAL NOTICE STRIP — positioned just above the input bar
+                 Compact single-line strip between chat scroll area and input box -->
+            <div class="safety-banner" role="alert">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"
+                    stroke-linejoin="round">
+                    <path d="m21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3Z" />
+                    <line x1="12" y1="9" x2="12" y2="13" />
+                    <line x1="12" y1="17" x2="12.01" y2="17" />
+                </svg>
+                <span><strong>Educational Notice:</strong> B.A.Y.M.A.X. provides medical information assistance only. In
+                    emergencies, contact professional healthcare immediately.</span>
             </div>
 
-            <!-- Input Bar -->
+            <!-- INPUT BAR
+                 Figma: Form #1:155 — EL-6b20cdce
+                 row, 20px padding, fill, hug, white, 1px top border #F4CCC4, 12px gap
+            -->
             <div class="chat-input-container">
+
+                <!-- MIC BUTTON
+                     Figma: Button #1:156 — EL-4681d6c5
+                     44×44 circle, #FFF4EF bg, #F4CCC4 border
+                -->
                 <button class="icon-btn" id="micBtn" title="Click to Speak" onclick="toggleMicRecording()">
-                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+                        stroke-linecap="round" stroke-linejoin="round">
                         <path d="M12 2a3 3 0 0 0-3 3v7a3 3 0 0 0 6 0V5a3 3 0 0 0-3-3Z" />
                         <path d="M19 10v2a7 7 0 0 1-14 0v-2" />
                         <line x1="12" y1="19" x2="12" y2="22" />
                     </svg>
                 </button>
 
+                <!-- TEXT INPUT
+                     Figma: Input #1:161 — EL-0903a09c
+                     fill, pill, #FFF8F6 bg, #F4CCC4 border, 11/12px padding
+                     Placeholder: "Describe symptoms or ask a health question..." rgba(47,36,36,0.5)
+                -->
                 <input type="text" class="chat-input" id="userInput"
-                    placeholder="Describe symptoms or ask a health question…" onkeypress="handleKeyPress(event)"
+                    placeholder="Describe symptoms or ask a health question..." onkeypress="handleKeyPress(event)"
                     autocomplete="off" spellcheck="true">
 
-                <button class="btn btn-primary" id="sendBtn" onclick="sendMessage()">
-                    Send
-                    <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor"
-                        stroke-width="2.5">
+                <!-- SEND BUTTON
+                     Figma: Button #1:164 — EL-35491017
+                     56×52, pill, #CC2426 bg, shadow
+                     Icon: EL-f652840d — 18×18 SVG send icon
+                -->
+                <button class="btn-send" id="sendBtn" onclick="sendMessage()" title="Send message">
+                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"
+                        stroke-linecap="round" stroke-linejoin="round">
                         <line x1="22" y1="2" x2="11" y2="13" />
                         <polygon points="22 2 15 22 11 13 2 9 22 2" />
                     </svg>
                 </button>
-            </div>
-        </main>
-    </div>
 
-    <!-- SDK + App Scripts -->
+            </div><!-- /chat-input-container -->
+
+        </main><!-- /chat-wrapper -->
+
+    </div><!-- /app-layout -->
+
+    <!-- SDK + App Scripts — DO NOT MOVE OR REMOVE -->
     <script src="/static/baymax-ai2-sdk.js"></script>
     <script src="/static/app.js"></script>
+
 </body>
 
 </html>
