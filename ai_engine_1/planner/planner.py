@@ -65,6 +65,8 @@ class IntelligentQueryPlanner:
         intent = "symptom_inquiry"
         if "first aid" in q_lower or "cpr" in q_lower or "burn" in q_lower:
             intent = "first_aid"
+        elif "extracted text:" in q_lower or "medical record" in q_lower or "patient information" in q_lower or "uploaded a medical" in q_lower or "document" in q_lower:
+            intent = "document_ocr"
 
         return ExecutionPlan(
             query=query,

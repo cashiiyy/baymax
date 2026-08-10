@@ -103,6 +103,19 @@ class PromptManager:
             )
             return f"{system}\n\nUser Query: {query}\nAnswer as Baymax:"
             
+        if intent == "document_ocr":
+            system = (
+                "You are Baymax, a compassionate, friendly personal healthcare companion. "
+                "Always call yourself 'Baymax' (never 'B.A.Y.M.A.X.'). "
+                "The user has uploaded a medical document or patient record. Analyze the details provided in the query "
+                "(such as medical history, symptoms, and medications). Explain the findings, medications, and terminology "
+                "clearly, warmly, and concisely, grounding your analysis in BOTH the retrieved medical context and the facts "
+                "present in the uploaded document. Do not reject the query just because the patient's name or record details "
+                "are not in the RAG database.\n"
+                "Keep your final response very concise, friendly, and under 3-4 sentences."
+            )
+            return f"{system}\n\nEvidence Context (RAG): {evidence_context}\n\nUploaded Document / Patient Details:\n{query}\n\nAnswer as Baymax:"
+
         system = self.get_prompt("system")
         medical = self.get_prompt("medical", query=query, evidence_context=evidence_context, patient_memory=patient_memory)
         return f"{system}\n\n{medical}"

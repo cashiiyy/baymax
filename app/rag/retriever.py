@@ -133,8 +133,35 @@ class MedicalRetriever:
 
         log.debug("Retrieving for query: '{}'", query[:100])
 
-        # Embed the query once, reuse across all collections
-        query_embedding = self.embedder.embed_single(query)
+        # Clean the query to remove OCR/prompt noise for semantic search embedding
+        search_query = query
+        if "extracted text:" in query.lower() or len(query) > 250:
+            import re
+            lines = query.splitlines()
+            medical_lines = []
+            capture = False
+            for line in lines:
+                l_lower = line.lower()
+                if any(h in l_lower for h in ["history", "medication", "symptom", "diagnosis", "report", "findings", "record"]):
+                    capture = True
+                if any(h in l_lower for h in ["please", "patient information", "contact number", "copyright"]):
+                    capture = False
+                if capture and line.strip():
+                    clean_line = re.sub(r'[*#_`>|🚨🩹🫀🦟🩺🐍🌡️🫁📋💡🔥🐍😐🔲💡📋👤•¢«-]', '', line).strip()
+                    if clean_line:
+                        medical_lines.append(clean_line)
+            if medical_lines:
+                search_query = " ".join(medical_lines)
+            else:
+                words = [w for w in query.split() if w.lower() not in [
+                    "i've", "uploaded", "medical", "document", "extracted", "text:", "text", "please", "analyse", "this", "and", "provide", "relevant", "information"
+                ]]
+                search_query = " ".join(words)
+
+        log.debug("Extracted search query for RAG: '{}'", search_query[:150])
+
+        # Embed the cleaned query once, reuse across all collections
+        query_embedding = self.embedder.embed_single(search_query)
 
         # Search all collections
         all_results: List[SearchResult] = []
