@@ -420,9 +420,9 @@ async def text_to_speech(req: TTSRequest):
 # ── AI Engine 2 Proxy — Multimodal ───────────────────────────────────────────
 
 def _extract_pdf_text_local(file_bytes: bytes) -> str:
-    import fitz # PyMuPDF
     text = ""
     try:
+        import fitz # PyMuPDF
         doc = fitz.open(stream=file_bytes, filetype="pdf")
         for page in doc:
             text += page.get_text()
@@ -579,6 +579,26 @@ async def ocr_endpoint(file: UploadFile = File(...), lang: str = Form("eng")):
             raw_text = pytesseract.image_to_string(image, lang=lang)
         except Exception as ocr_err:
             logger.warning(f"Local image OCR failed: {ocr_err}")
+            # Dynamic fallback for isolated environment when AE2 and pytesseract are unavailable
+            try:
+                import easyocr
+                import numpy as np
+                from PIL import Image
+                import io
+                
+                logger.info("Attempting dynamic OCR extraction using easyocr fallback...")
+                image = Image.open(io.BytesIO(file_bytes)).convert("RGB")
+                img_np = np.array(image)
+                # easyocr needs BGR format if passed as numpy array from RGB
+                img_bgr = img_np[:, :, ::-1] 
+                
+                reader = easyocr.Reader(['en'], gpu=False, verbose=False)
+                results = reader.readtext(img_bgr, detail=0)
+                raw_text = "\n".join(results)
+                logger.info(f"easyocr successfully extracted {len(raw_text)} chars.")
+            except Exception as easy_err:
+                logger.error(f"easyocr fallback failed: {easy_err}")
+                raw_text = ""
 
         if raw_text.strip():
             analysis = await _process_medical_document_rag(raw_text)

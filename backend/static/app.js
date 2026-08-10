@@ -563,10 +563,12 @@ async function handleOCRUpload(event) {
                 const pct = Math.round(result.overall_confidence * 100);
                 html += ` &nbsp;|&nbsp; <strong>Confidence:</strong> ${pct}%`;
             }
-            if (result.extracted_fields?.length) {
+            if (result.extracted_fields && Object.keys(result.extracted_fields).length > 0) {
                 html += "<br><br><strong>🔍 Extracted Fields:</strong><ul>";
-                result.extracted_fields.forEach(f => {
-                    html += `<li><strong>${f.field}:</strong> ${f.value}</li>`;
+                Object.entries(result.extracted_fields).forEach(([key, value]) => {
+                    // Format key from snake_case to Title Case
+                    const titleKey = key.split('_').map(w => w.charAt(0).toUpperCase() + w.slice(1)).join(' ');
+                    html += `<li><strong>${titleKey}:</strong> ${value}</li>`;
                 });
                 html += "</ul>";
             }
