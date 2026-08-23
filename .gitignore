@@ -66,3 +66,5 @@ data/chroma_db/
 
 # Docker volumes / runtime data
 docker/volumes/
+
+*ini
