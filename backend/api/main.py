@@ -274,7 +274,7 @@ async def chat_endpoint(req: ChatRequest, db: Session = Depends(get_db)):
         user_id=req.user_id,
         query=req.query,
         response=pipeline_res.response,
-        confidence=pipeline_res.confidence.dict(),
+        confidence=pipeline_res.confidence.model_dump() if hasattr(pipeline_res.confidence, "model_dump") else pipeline_res.confidence.dict(),
         risk=pipeline_res.confidence.risk,
     )
 
