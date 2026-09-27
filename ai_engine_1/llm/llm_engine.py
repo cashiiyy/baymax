@@ -33,10 +33,13 @@ class ProductionLLMEngine:
         self.omniroute_url = f"{config.omniroute_base_url}/chat/completions"
         self.ollama_url = f"{config.ollama_base_url}/api/generate"
 
-        # Local Qwen 2.5 provider (lazy-initialized, only when configured)
+        # Local Qwen 2.5 provider & LM Studio provider (lazy-initialized)
         self._qwen_local_provider = None
-        self._llm_provider_type = getattr(config, 'llm_provider', 'omniroute')
-        if self._llm_provider_type == 'qwen_local':
+        self._lmstudio_provider = None
+        self._llm_provider_type = getattr(config, 'llm_provider', 'lmstudio')
+        if self._llm_provider_type == 'lmstudio':
+            logger.info(f"[LLM] Provider selected: LMStudio ({getattr(config, 'lmstudio_model', 'local-model')} @ {getattr(config, 'lmstudio_base_url', 'http://127.0.0.1:1234')})")
+        elif self._llm_provider_type == 'qwen_local':
             logger.info("[LLM] Provider selected: QwenLocal (4-bit quantized)")
         else:
             logger.info(f"[LLM] Provider selected: {self._llm_provider_type}")
@@ -62,13 +65,25 @@ class ProductionLLMEngine:
         except Exception:
             pass
 
-        # Try Local Qwen 2.5 (4-bit quantized) if configured as primary and context length is okay
+        # 1. Try LM Studio External Service if configured as primary
+        if self._llm_provider_type == 'lmstudio' and getattr(self.config, 'lmstudio_enabled', True):
+            try:
+                provider = self._get_lmstudio_provider()
+                res = await provider.generate(
+                    prompt=prompt,
+                    system_prompt=system_prompt,
+                    temperature=temperature,
+                    max_tokens=max_tokens,
+                )
+                return res
+            except Exception as lm_err:
+                logger.warning(f"[LLM] LM Studio provider failed ({lm_err}), triggering fallback chain...")
+
+        # 2. Try Local Qwen 2.5 (4-bit quantized) if configured as primary and context length is okay
         if self._llm_provider_type == 'qwen_local' and not is_context_overflow:
             try:
                 provider = self._get_qwen_local_provider()
                 if provider.is_available():
-                    # We wrap the local generation to execute failover on timeout or OOM/Cuda exceptions
-                    # using an internal timeout or try/except block.
                     res = await asyncio.wait_for(
                         provider.generate(
                             prompt=prompt,
@@ -82,7 +97,7 @@ class ProductionLLMEngine:
             except Exception as err:
                 logger.warning(f"[LLM] Local Qwen provider failed (possible OOM/Timeout/Error), falling back to OmniRoute gateway: {err}")
 
-        # 1. Try Backup: OmniRoute API gateway
+        # 3. Try Backup: OmniRoute API gateway
         if self.omniroute_api_key:
             try:
                 res = await self._call_omniroute(prompt, system_prompt, temperature, json_mode, max_tokens)
@@ -251,6 +266,17 @@ class ProductionLLMEngine:
             data = response.json()
             return data.get("response", "").strip()
 
+    def _get_lmstudio_provider(self):
+        """Lazy-initialize the LM Studio provider singleton."""
+        if self._lmstudio_provider is None:
+            from ai_engine_1.llm.provider_lmstudio import LMStudioProvider
+            self._lmstudio_provider = LMStudioProvider(
+                base_url=getattr(self.config, 'lmstudio_base_url', 'http://127.0.0.1:1234'),
+                model_id=getattr(self.config, 'lmstudio_model', 'local-model'),
+                timeout=getattr(self.config, 'lmstudio_timeout', 60.0),
+            )
+        return self._lmstudio_provider
+
     def _get_qwen_local_provider(self):
         """Lazy-initialize the local Qwen 2.5 provider singleton."""
         if self._qwen_local_provider is None:
@@ -267,6 +293,9 @@ class ProductionLLMEngine:
     @property
     def active_provider_name(self) -> str:
         """Return the name of the currently configured primary provider."""
+        if self._llm_provider_type == 'lmstudio':
+            provider = self._get_lmstudio_provider()
+            return provider.provider_name()
         if self._llm_provider_type == 'qwen_local':
             provider = self._get_qwen_local_provider()
             return provider.provider_name()

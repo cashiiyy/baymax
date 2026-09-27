@@ -51,6 +51,8 @@ from backend.logging.logger import get_logger
 from ai_engine_1.api.routes import router as engine1_router
 from ai_engine_1.pipeline.reasoning_pipeline import reasoning_pipeline
 from app.stt.whisper_engine import WhisperEngine
+from app.tts.voicebox_engine import voicebox_engine
+from config import settings
 
 logger = get_logger("baymax-backend")
 
@@ -155,16 +157,26 @@ if os.path.exists(STATIC_DIR):
 # ── Pydantic Models ───────────────────────────────────────────────────────────
 
 class ChatRequest(BaseModel):
-    user_id: int = 1
-    query: str
+    user_id: Any = 1
+    query: Optional[str] = None
+    text: Optional[str] = None
+    detected_emotion: str = "neutral"
+
+    @property
+    def message_text(self) -> str:
+        return (self.query or self.text or "").strip()
 
 
 class ChatResponse(BaseModel):
-    user_id: int
-    query: str
+    user_id: Any = 1
+    query: str = ""
     response: str
+    response_text: Optional[str] = None
+    suggested_emotion: Optional[str] = "neutral"
     confidence: Optional[Dict[str, Any]] = None
     risk: Optional[str] = "low"
+    latency_s: Optional[float] = None
+    audio_b64: Optional[str] = None
 
 
 class TTSRequest(BaseModel):
@@ -204,26 +216,89 @@ async def health_fast():
     return {
         "status": "online",
         "system": "B.A.Y.M.A.X. v2.0",
-        "backend_ip": os.getenv("TAILSCALE_IP", "100.108.247.7"),
+        "backend_ip": os.getenv("TAILSCALE_IP", "100.89.251.123"),
     }
+
+
+@app.get("/health/llm")
+async def health_llm():
+    """Independent health check for LLM Inference Service (LM Studio / Qwen)."""
+    try:
+        from ai_engine_1.llm.provider_lmstudio import LMStudioProvider
+        provider = LMStudioProvider()
+        return await provider.check_health()
+    except Exception as exc:
+        return {"status": "error", "error": str(exc)}
+
+
+@app.get("/health/voice")
+async def health_voice():
+    """Independent health check for Voice Box / Baymax Voice Service."""
+    try:
+        return await voicebox_engine.check_health()
+    except Exception as exc:
+        return {"status": "error", "error": str(exc)}
+
+
+@app.get("/health/rag")
+async def health_rag():
+    """Independent health check for RAG Vector Database."""
+    try:
+        from app.rag.pipeline import RAGPipeline
+        rag = RAGPipeline()
+        st = rag.status()
+        return {
+            "status": "online" if st.is_built else "empty",
+            "is_built": st.is_built,
+            "collection_counts": st.collection_counts,
+            "embedding_dim": st.embedding_dim,
+            "processed_datasets": st.processed_datasets,
+        }
+    except Exception as exc:
+        return {"status": "error", "error": str(exc)}
 
 
 @app.get("/api/health")
 async def health_check():
-    """Full health check — probes AE2 status (may take up to 5s)."""
+    """Full health check — probes RAG, LLM, Voicebox, and AE2 status."""
+    # Check AE2
     ae2_ok = False
     try:
-        async with httpx.AsyncClient(timeout=5.0) as c:
+        async with httpx.AsyncClient(timeout=3.0) as c:
             r = await c.get(f"{_ae2_url()}/health")
             ae2_ok = r.status_code == 200 and r.json().get("status") in ("ok", "healthy", "degraded")
         _ae2_status_cache["online"] = ae2_ok
     except Exception:
         _ae2_status_cache["online"] = False
 
+    # Check RAG
+    rag_built = False
+    try:
+        from app.rag.pipeline import RAGPipeline
+        rag_built = RAGPipeline().status().is_built
+    except Exception:
+        pass
+
+    # Quick LLM probe
+    llm_status = "configured"
+    try:
+        from ai_engine_1.llm.provider_lmstudio import LMStudioProvider
+        llm_avail = await LMStudioProvider().is_available_async()
+        llm_status = "online" if llm_avail else "offline"
+    except Exception:
+        llm_status = "offline"
+
+    # Quick Voicebox probe
+    voice_avail = await voicebox_engine.is_healthy()
+
     return {
         "status": "online",
         "system": "B.A.Y.M.A.X. v2.0 Medical Intelligence",
-        "backend_ip": os.getenv("TAILSCALE_IP", "100.108.247.7"),
+        "backend_ip": os.getenv("TAILSCALE_IP", "100.89.251.123"),
+        "rag_ready": rag_built,
+        "llm_provider": getattr(settings, "LLM_PROVIDER", "lmstudio"),
+        "llm_status": llm_status,
+        "voicebox_status": "online" if voice_avail else "offline",
         "ae2_url": _ae2_url(),
         "ae2_online": _ae2_status_cache["online"],
     }
@@ -257,31 +332,48 @@ async def ai_engine_status():
 # ── Core Chat ─────────────────────────────────────────────────────────────────
 
 @app.post("/chat", response_model=ChatResponse)
+@app.post("/chat/respond", response_model=ChatResponse)
 async def chat_endpoint(req: ChatRequest, db: Session = Depends(get_db)):
-    logger.info("Chat query", extra={"user_id": req.user_id, "query": req.query})
+    user_query = req.message_text
+    if not user_query:
+        raise HTTPException(status_code=400, detail="Missing query or text field in request.")
+
+    logger.info("Chat query received", extra={"user_id": str(req.user_id), "query": user_query})
+
+    # Numeric user_id for SQLite memory
+    try:
+        numeric_user_id = int(req.user_id)
+    except (ValueError, TypeError):
+        numeric_user_id = 1
 
     mem = MemoryManager(db)
-    mem.add_conversation_turn(req.user_id, "user", req.query)
+    mem.add_conversation_turn(numeric_user_id, "user", user_query)
 
-    history_turns = mem.get_short_term_history(req.user_id)
+    history_turns = mem.get_short_term_history(numeric_user_id)
     history_text  = "\n".join([f"{h['role']}: {h['message']}" for h in history_turns])
 
-    pipeline_res = await reasoning_pipeline.execute_async(req.query, history_text)
+    pipeline_res = await reasoning_pipeline.execute_async(user_query, history_text)
 
-    mem.add_conversation_turn(req.user_id, "assistant", pipeline_res.response)
+    mem.add_conversation_turn(numeric_user_id, "assistant", pipeline_res.response)
+
+    conf_dict = pipeline_res.confidence.model_dump() if hasattr(pipeline_res.confidence, "model_dump") else pipeline_res.confidence.dict()
 
     return ChatResponse(
         user_id=req.user_id,
-        query=req.query,
+        query=user_query,
         response=pipeline_res.response,
-        confidence=pipeline_res.confidence.model_dump() if hasattr(pipeline_res.confidence, "model_dump") else pipeline_res.confidence.dict(),
-        risk=pipeline_res.confidence.risk,
+        response_text=pipeline_res.response,
+        suggested_emotion="neutral",
+        confidence=conf_dict,
+        risk=getattr(pipeline_res.confidence, "risk", "low"),
+        latency_s=round(pipeline_res.total_latency_ms / 1000.0, 2),
     )
 
 
 # ── AI Engine 1 — Speech & Wake Word ──────────────────────────────────────────
 
 @app.post("/stt")
+@app.post("/stt/transcribe")
 async def speech_to_text(file: UploadFile = File(...)):
     """
     Speech-to-text running directly on AI Engine 1 (Faster-Whisper).
@@ -365,14 +457,31 @@ async def wakeword_detection(
 
 
 @app.post("/tts")
+@app.post("/multimodal/tts")
 async def text_to_speech(req: TTSRequest):
     """
-    TTS synthesis — tries AI Engine 2 (XTTS v2) first, falls back to local XTTS engine.
+    TTS synthesis — tries Voicebox TTS (http://127.0.0.1:17493 with Baymax profile) first,
+    then tries AI Engine 2 (XTTS v2), then edge-tts, then lets client fallback to browser TTS.
     Returns base64-encoded WAV audio.
     """
     import base64
 
-    # 1. Try AE2 TTS proxy
+    # 1. Try Voicebox TTS Server (Primary Voice: BAYMAX)
+    if getattr(settings, "VOICEBOX_ENABLED", True):
+        try:
+            target_voice = req.voice if (req.voice and req.voice != "default") else getattr(settings, "VOICEBOX_VOICE_PROFILE", "Baymax")
+            res = await voicebox_engine.generate_speech(
+                text=req.text,
+                profile_name_or_id=target_voice,
+                language=req.language or "en",
+            )
+            if res.get("success") and res.get("audio_base64"):
+                logger.info(f"Generated TTS speech via Voicebox ({res.get('voice_used')})")
+                return res
+        except Exception as vb_err:
+            logger.warning(f"Voicebox TTS failed/unavailable ({vb_err}), falling back to AE2 / Edge-TTS...")
+
+    # 2. Try AE2 TTS proxy
     try:
         result = await _proxy_to_ae2(
             "/tts",
@@ -388,12 +497,12 @@ async def text_to_speech(req: TTSRequest):
         )
         return result
     except HTTPException:
-        logger.warning("AE2 TTS unavailable, trying local XTTS engine...")
+        logger.warning("AE2 TTS unavailable, trying Edge-TTS...")
 
-    # 2. Fall back to edge-tts (High quality Microsoft Edge voice)
+    # 3. Fall back to edge-tts (High quality Microsoft Edge voice)
     try:
         import edge_tts
-        # en-US-ChristopherNeural is a very calm, deep, friendly male voice suitable for Baymax
+        # en-US-ChristopherNeural is a calm, friendly male voice suitable for Baymax
         communicate = edge_tts.Communicate(req.text, "en-US-ChristopherNeural")
         audio_data = b""
         async for chunk in communicate.stream():
@@ -406,14 +515,16 @@ async def text_to_speech(req: TTSRequest):
             "audio_base64": audio_b64,
             "duration_seconds": len(audio_data) / 16000, # Approximate
             "voice_used": "edge-tts-christopher",
+            "engine": "edge-tts",
+            "format": "mp3",
         }
     except Exception as local_err:
         logger.warning(f"Edge-tts fallback failed: {local_err}")
 
-    # 3. Return error — let frontend use browser TTS
+    # 4. Return error — let frontend use browser TTS
     raise HTTPException(
         status_code=503,
-        detail="TTS unavailable: AE2 offline and edge-tts failed. Browser TTS will be used.",
+        detail="TTS unavailable: Voicebox, AE2, and Edge-TTS failed. Browser TTS will be used.",
     )
 
 
@@ -518,6 +629,7 @@ async def _process_medical_document_rag(raw_text: str) -> dict:
 
 
 @app.post("/ocr")
+@app.post("/multimodal/ocr")
 async def ocr_endpoint(file: UploadFile = File(...), lang: str = Form("eng")):
     """
     Process OCR and medical report parsing. Supports PDFs locally using PyMuPDF and RAG-based extraction.
@@ -629,6 +741,7 @@ async def ocr_endpoint(file: UploadFile = File(...), lang: str = Form("eng")):
 
 
 @app.post("/proxy/vision")
+@app.post("/multimodal/vision")
 async def vision_endpoint(file: UploadFile = File(...)):
     """
     Proxy image vision analysis to AI Engine 2 with local AI Engine 1 fallback and local emotion overrides.
@@ -710,6 +823,7 @@ async def vision_endpoint(file: UploadFile = File(...)):
 
 
 @app.post("/proxy/analyse")
+@app.post("/multimodal/analyse")
 async def analyse_endpoint(
     file: UploadFile = File(...),
     tasks: str = Form("ocr"),
@@ -727,6 +841,7 @@ async def analyse_endpoint(
 
 
 @app.post("/proxy/document")
+@app.post("/multimodal/document")
 async def document_endpoint(file: UploadFile = File(...)):
     """
     Proxy structured document parsing to AI Engine 2 (PDF/image/text).
@@ -740,6 +855,7 @@ async def document_endpoint(file: UploadFile = File(...)):
 
 
 @app.get("/proxy/ae2-health")
+@app.get("/multimodal/ae2-health")
 async def ae2_health_proxy():
     """Direct health probe of AI Engine 2. Never raises — always returns a status."""
     try:
@@ -751,6 +867,7 @@ async def ae2_health_proxy():
 
 
 @app.get("/proxy/ae2-status")
+@app.get("/multimodal/ae2-status")
 async def ae2_status_proxy():
     """Full status probe of AI Engine 2 (component readiness)."""
     try:
@@ -763,8 +880,46 @@ async def ae2_status_proxy():
 
 @app.get("/tts/voices")
 async def list_voices():
-    """List available TTS voice profiles from AI Engine 2."""
-    return await _proxy_to_ae2("/tts/voices", method="GET")
+    """List available TTS voice profiles from Voicebox and AI Engine 2."""
+    voices = []
+
+    # 1. Query Voicebox Profiles
+    if getattr(settings, "VOICEBOX_ENABLED", True):
+        try:
+            vb_profiles = await voicebox_engine.get_profiles()
+            for p in vb_profiles:
+                voices.append({
+                    "id": p.get("id"),
+                    "name": p.get("name"),
+                    "engine": "voicebox",
+                    "is_cloned": p.get("voice_type") == "cloned",
+                    "language": p.get("language", "en"),
+                    "personality": p.get("personality"),
+                })
+        except Exception as e:
+            logger.warning(f"Failed to fetch Voicebox voices: {e}")
+
+    # Ensure BAYMAX profile is represented
+    if not any(v.get("name", "").lower() == "baymax" for v in voices):
+        voices.insert(0, {
+            "id": getattr(settings, "VOICEBOX_PROFILE_ID", "2673a1ad-4529-4be8-ab9e-41998bc6ec56"),
+            "name": "Baymax",
+            "engine": "voicebox",
+            "is_cloned": True,
+            "language": "en",
+        })
+
+    # 2. Query AE2 voices
+    try:
+        ae2_res = await _proxy_to_ae2("/tts/voices", method="GET")
+        if isinstance(ae2_res, dict) and "voices" in ae2_res:
+            voices.extend(ae2_res["voices"])
+        elif isinstance(ae2_res, list):
+            voices.extend(ae2_res)
+    except Exception:
+        pass
+
+    return {"available": True, "voices": voices}
 
 
 # ── Conversation History ───────────────────────────────────────────────────────

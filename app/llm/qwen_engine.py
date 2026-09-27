@@ -86,12 +86,15 @@ class QwenEngine:
         from config import settings
 
         self.model_id = model_id or settings.LLM_MODEL_ID
+        self.provider = getattr(settings, 'LLM_PROVIDER', 'huggingface')
+        self.lmstudio_url = getattr(settings, 'LMSTUDIO_BASE_URL', '')
         self.load_in_4bit = load_in_4bit if load_in_4bit is not None else settings.LLM_LOAD_IN_4BIT
         self.load_in_8bit = load_in_8bit if load_in_8bit is not None else getattr(settings, 'LLM_LOAD_IN_8BIT', False)
         self.device_map = device_map or settings.LLM_DEVICE_MAP
         self.max_new_tokens = max_new_tokens or settings.LLM_MAX_NEW_TOKENS
         self.temperature = temperature if temperature is not None else settings.LLM_TEMPERATURE
         self.top_p = top_p if top_p is not None else settings.LLM_TOP_P
+        self.timeout = getattr(settings, 'LMSTUDIO_TIMEOUT', 60.0)
         self.repetition_penalty = (
             repetition_penalty if repetition_penalty is not None
             else settings.LLM_REPETITION_PENALTY
@@ -126,9 +129,12 @@ class QwenEngine:
         Returns:
             LLMResponse with generated text and statistics.
         """
-        self._ensure_model_loaded()
-
         t_start = time.time()
+
+        if self.provider == "lmstudio":
+            return self._generate_lmstudio(messages, stream, t_start)
+
+        self._ensure_model_loaded()
 
         # Apply Qwen3 chat template
         text_input = self._tokenizer.apply_chat_template(
@@ -178,6 +184,10 @@ class QwenEngine:
         Yields:
             Text chunks (one or more tokens at a time).
         """
+        if self.provider == "lmstudio":
+            yield from self._generate_streaming_lmstudio(messages)
+            return
+
         self._ensure_model_loaded()
         from transformers import TextIteratorStreamer
         import threading
@@ -240,6 +250,8 @@ class QwenEngine:
 
     def _ensure_model_loaded(self) -> None:
         """Load model and tokenizer if not already loaded."""
+        if self.provider == "lmstudio":
+            return
         if self._model is not None:
             return
 
@@ -300,6 +312,100 @@ class QwenEngine:
             next(self._model.parameters()).device,
             next(self._model.parameters()).dtype,
         )
+
+    def _generate_lmstudio(self, messages: List[dict], stream: bool, t_start: float) -> LLMResponse:
+        import httpx
+        log.info("Generating via LM Studio | stream={} | url={}", stream, self.lmstudio_url)
+
+        if stream:
+            collected = ""
+            for chunk in self._generate_streaming_lmstudio(messages):
+                collected += chunk
+            elapsed = time.time() - t_start
+            return LLMResponse(text=collected, elapsed_s=round(elapsed, 3))
+
+        timeout_sec = float(getattr(self, "timeout", 60.0))
+        timeout_config = httpx.Timeout(connect=5.0, read=timeout_sec, write=15.0, pool=5.0)
+
+        try:
+            with httpx.Client(timeout=timeout_config) as client:
+                res = client.post(
+                    f"{self.lmstudio_url.rstrip('/')}/v1/chat/completions",
+                    json={
+                        "model": self.model_id,
+                        "messages": messages,
+                        "temperature": self.temperature,
+                        "max_tokens": self.max_new_tokens,
+                        "top_p": self.top_p,
+                        "stream": False
+                    }
+                )
+                res.raise_for_status()
+                data = res.json()
+                text = ""
+                if "choices" in data and len(data["choices"]) > 0:
+                    text = data["choices"][0]["message"].get("content", "")
+                
+                if not text:
+                    raise RuntimeError("Empty response received from LM Studio")
+
+                in_tok = data.get("usage", {}).get("prompt_tokens", 0)
+                out_tok = data.get("usage", {}).get("completion_tokens", 0)
+                elapsed = time.time() - t_start
+                return LLMResponse(text=text, input_tokens=in_tok, output_tokens=out_tok, elapsed_s=round(elapsed, 3))
+        except (httpx.ConnectError, httpx.TimeoutException) as conn_err:
+            log.warning("LM Studio unavailable/timed out ({}), using fallback response.", conn_err)
+            elapsed = time.time() - t_start
+            # Return a compassionate Baymax response if LM Studio inference server is offline
+            fallback_text = (
+                "Hello, I am Baymax, your personal healthcare companion. "
+                "I am currently operating in offline mode. Please monitor your symptoms closely, "
+                "ensure adequate hydration and rest, and consult a qualified healthcare professional if symptoms persist."
+            )
+            return LLMResponse(text=fallback_text, elapsed_s=round(elapsed, 3))
+        except Exception as e:
+            log.error("LM Studio generation failed: {}", e)
+            elapsed = time.time() - t_start
+            fallback_text = (
+                "Hello, I am Baymax. I am currently experiencing difficulty reaching the reasoning backend. "
+                "Please consult a doctor for personalized medical evaluation."
+            )
+            return LLMResponse(text=fallback_text, elapsed_s=round(elapsed, 3))
+
+    def _generate_streaming_lmstudio(self, messages: List[dict]) -> Generator[str, None, None]:
+        import httpx
+        import json
+        try:
+            with httpx.Client(timeout=120.0) as client:
+                with client.stream(
+                    "POST",
+                    f"{self.lmstudio_url.rstrip('/')}/v1/chat/completions",
+                    json={
+                        "model": self.model_id,
+                        "messages": messages,
+                        "temperature": self.temperature,
+                        "max_tokens": self.max_new_tokens,
+                        "top_p": self.top_p,
+                        "stream": True
+                    }
+                ) as response:
+                    response.raise_for_status()
+                    for line in response.iter_lines():
+                        if line.startswith("data: "):
+                            data_str = line[6:]
+                            if data_str == "[DONE]":
+                                break
+                            try:
+                                chunk = json.loads(data_str)
+                                delta = chunk["choices"][0].get("delta", {})
+                                content = delta.get("content")
+                                if content:
+                                    yield content
+                            except json.JSONDecodeError:
+                                pass
+        except Exception as e:
+            log.error("LM Studio streaming failed: {}", e)
+            yield f"Error: {e}"
 
     def _generate_standard(
         self,

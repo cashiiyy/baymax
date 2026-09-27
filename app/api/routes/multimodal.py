@@ -19,6 +19,7 @@ from fastapi import APIRouter, File, UploadFile, Form, HTTPException
 from pydantic import BaseModel
 
 from app.utils.ae2_client import ae2_client
+from app.tts.voicebox_engine import voicebox_engine
 from app.utils.logger import get_logger
 
 log = get_logger(__name__)
@@ -64,9 +65,19 @@ async def tts(
     language: str = Form("en"),
 ):
     """
-    Synthesize speech via AI Engine 2 (XTTS v2).
+    Synthesize speech via Voicebox TTS (Baymax profile) or AI Engine 2 (XTTS v2).
     Returns base64-encoded WAV + duration.
     """
+    # 1. Try Voicebox
+    try:
+        target_voice = voice if (voice and voice != "default") else "Baymax"
+        res = await voicebox_engine.generate_speech(text=text, profile_name_or_id=target_voice, language=language)
+        if res.get("success") and res.get("audio_base64"):
+            return {"available": True, **res}
+    except Exception as exc:
+        log.warning("Voicebox TTS unavailable in multimodal route: {}", exc)
+
+    # 2. Fall back to AE2
     result = await ae2_client.tts(text=text, voice=voice, language=language)
     if result is None:
         return AE2Unavailable()
@@ -75,8 +86,35 @@ async def tts(
 
 @router.get("/voices")
 async def list_voices():
-    """List TTS voice profiles available on AI Engine 2."""
-    voices = await ae2_client.get_voices()
+    """List TTS voice profiles available on Voicebox and AI Engine 2."""
+    voices = []
+    try:
+        vb_profiles = await voicebox_engine.get_profiles()
+        for p in vb_profiles:
+            voices.append({
+                "name": p.get("name"),
+                "language": p.get("language", "en"),
+                "description": p.get("personality") or p.get("description"),
+                "is_cloned": p.get("voice_type") == "cloned",
+            })
+    except Exception:
+        pass
+
+    if not any(v.get("name", "").lower() == "baymax" for v in voices):
+        voices.insert(0, {
+            "name": "Baymax",
+            "language": "en",
+            "description": "Baymax Voice Profile",
+            "is_cloned": True,
+        })
+
+    try:
+        ae2_voices = await ae2_client.get_voices()
+        if ae2_voices:
+            voices.extend(ae2_voices)
+    except Exception:
+        pass
+
     return {"available": True, "voices": voices}
 
 

@@ -68,21 +68,23 @@ def test_config_has_qwen_fields():
 
 
 def test_config_defaults():
-    """EngineConfig should default to omniroute."""
+    """EngineConfig should default to a valid configured LLM provider."""
     from ai_engine_1.config import EngineConfig
     config = EngineConfig()
-    assert config.llm_provider == "omniroute"
+    assert config.llm_provider in ("lmstudio", "omniroute", "qwen_local")
     assert config.qwen_model == "Qwen/Qwen2.5-7B-Instruct-GPTQ-Int4"
     assert config.qwen_max_new_tokens == 512
+    assert hasattr(config, "lmstudio_base_url")
+    assert hasattr(config, "lmstudio_model")
 
 
-# ── 4. Fallback Chain ─────────────────────────────────────────────────────────
+# ── 4. Fallback Chain & Providers ─────────────────────────────────────────────
 
 def test_llm_engine_default_provider_type():
-    """Default ProductionLLMEngine should use omniroute provider type."""
+    """Default ProductionLLMEngine should use configured provider type."""
     from ai_engine_1.llm.llm_engine import ProductionLLMEngine
     engine = ProductionLLMEngine()
-    assert engine._llm_provider_type == "omniroute"
+    assert engine._llm_provider_type in ("lmstudio", "omniroute", "qwen_local")
 
 
 def test_llm_engine_active_provider_name():
@@ -92,6 +94,47 @@ def test_llm_engine_active_provider_name():
     name = engine.active_provider_name
     assert isinstance(name, str)
     assert len(name) > 0
+
+
+def test_lmstudio_provider_unit():
+    """Test LMStudioProvider generation and health check with mocks."""
+    import asyncio
+    from ai_engine_1.llm.provider_lmstudio import LMStudioProvider
+
+    async def _test():
+        provider = LMStudioProvider(base_url="http://127.0.0.1:1234", model_id="local-model")
+        assert provider.provider_name() == "LMStudio/local-model"
+
+        # Mock /v1/chat/completions
+        with patch("httpx.AsyncClient.post") as mock_post:
+            mock_resp = MagicMock()
+            mock_resp.status_code = 200
+            mock_resp.json.return_value = {
+                "id": "chatcmpl-123",
+                "choices": [{"message": {"role": "assistant", "content": "Hello! I am Baymax."}}],
+                "usage": {"total_tokens": 15}
+            }
+            mock_post.return_value = mock_resp
+
+            res = await provider.generate("Hello")
+            assert res.text == "Hello! I am Baymax."
+            assert res.model_used == "LMStudio/local-model"
+            assert res.tokens_used == 15
+
+        # Mock /v1/models for health check
+        with patch("httpx.AsyncClient.get") as mock_get:
+            mock_resp2 = MagicMock()
+            mock_resp2.status_code = 200
+            mock_resp2.json.return_value = {
+                "data": [{"id": "qwen2.5-29b"}]
+            }
+            mock_get.return_value = mock_resp2
+
+            health = await provider.check_health()
+            assert health["status"] == "online"
+            assert "qwen2.5-29b" in health["available_models"]
+
+    asyncio.run(_test())
 
 
 def test_llm_engine_offline_fallback():

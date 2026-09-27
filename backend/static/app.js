@@ -89,7 +89,7 @@ async function initSDK() {
 async function checkAE2Health() {
     if (!ai2) return;
     try {
-        const r = await fetch(`${API_BASE}/proxy/ae2-health`);
+        const r = await fetch(`${API_BASE}/multimodal/ae2-status`);
         const data = await r.json();
 
         const online = data.status === "ok" ||
@@ -169,7 +169,7 @@ function showAE2Components(data) {
     }
 }
 
-// ── Text-to-Speech (AE2 → Backend local → Browser fallback) ──────────────────
+// ── Text-to-Speech (Voicebox Baymax → AE2 XTTS → Browser fallback) ──────────
 async function speakText(text) {
     const toggle = document.getElementById("voiceToggle");
     if (!toggle?.checked || !voiceEnabled) return;
@@ -184,7 +184,40 @@ async function speakText(text) {
         .trim();
     if (!clean || clean.length < 2) return;
 
-    // 1. Try AE2 TTS
+    // 1. Primary: Try Backend /tts (Voicebox 'Baymax' voice or fallback)
+    try {
+        const res = await fetch(`${API_BASE}/multimodal/tts`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ text: clean, voice: "Baymax", language: "en" }),
+        });
+        if (res.ok) {
+            const data = await res.json();
+            if (data.audio_base64) {
+                if (currentAudioElement) {
+                    currentAudioElement.pause();
+                    currentAudioElement = null;
+                }
+                const binaryStr = atob(data.audio_base64);
+                const bytes = new Uint8Array(binaryStr.length);
+                for (let i = 0; i < binaryStr.length; i++) bytes[i] = binaryStr.charCodeAt(i);
+                
+                const mimeType = (data.format === "mp3") ? "audio/mp3" : "audio/wav";
+                const blob = new Blob([bytes], { type: mimeType });
+                const audioUrl = URL.createObjectURL(blob);
+                const audio = new Audio(audioUrl);
+                audio.onended = () => URL.revokeObjectURL(audioUrl);
+                currentAudioElement = audio;
+                await audio.play();
+                console.log(`[BAYMAX] Playing TTS audio (${data.voice_used || "Baymax"})`);
+                return;
+            }
+        }
+    } catch (err) {
+        console.warn("[BAYMAX] Backend TTS (Voicebox) request failed:", err.message);
+    }
+
+    // 2. Secondary: Try AE2 TTS if available
     if (ae2Online && ai2) {
         try {
             const audio = await ai2.tts(clean);
@@ -198,36 +231,6 @@ async function speakText(text) {
         } catch (err) {
             console.warn("[BAYMAX] AE2 TTS failed:", err.message);
         }
-    }
-
-    // 2. Try backend local TTS route (uses XTTS engine)
-    try {
-        const res = await fetch(`${API_BASE}/tts`, {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ text: clean, voice: "default", language: "en" }),
-        });
-        if (res.ok) {
-            const data = await res.json();
-            if (data.audio_base64) {
-                if (currentAudioElement) {
-                    currentAudioElement.pause();
-                    currentAudioElement = null;
-                }
-                const binaryStr = atob(data.audio_base64);
-                const bytes = new Uint8Array(binaryStr.length);
-                for (let i = 0; i < binaryStr.length; i++) bytes[i] = binaryStr.charCodeAt(i);
-                const blob = new Blob([bytes], { type: "audio/mp3" });
-                const audioUrl = URL.createObjectURL(blob);
-                const audio = new Audio(audioUrl);
-                audio.onended = () => URL.revokeObjectURL(audioUrl);
-                currentAudioElement = audio; // Keep track of local fallback audio too!
-                await audio.play();
-                return;
-            }
-        }
-    } catch (err) {
-        console.warn("[BAYMAX] Backend TTS failed:", err.message);
     }
 
     // 3. Browser Web Speech API fallback
@@ -399,7 +402,7 @@ async function transcribeAndSubmit(audioBlob) {
         try {
             const form = new FormData();
             form.append("file", audioBlob, "audio.webm");
-            const res = await fetch(`${API_BASE}/stt`, { method: "POST", body: form });
+            const res = await fetch(`${API_BASE}/stt/transcribe`, { method: "POST", body: form });
             if (res.ok) {
                 const data = await res.json();
                 if (data.text) {
@@ -448,10 +451,10 @@ async function submitQuery(query) {
     );
 
     try {
-        const res = await fetch(`${API_BASE}/chat`, {
+        const res = await fetch(`${API_BASE}/chat/respond`, {
             method: "POST",
             headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ user_id: 1, query }),
+            body: JSON.stringify({ user_id: "1", text: query }),
         });
 
         if (!res.ok) {
@@ -525,7 +528,7 @@ async function handleOCRUpload(event) {
                 const form = new FormData();
                 form.append("file", file);
                 form.append("lang", "eng");
-                const r = await fetch(`${API_BASE}/ocr`, { method: "POST", body: form });
+                const r = await fetch(`${API_BASE}/multimodal/ocr`, { method: "POST", body: form });
                 if (r.ok) {
                     result = await r.json();
                 } else {
@@ -662,7 +665,7 @@ async function captureAndAnalyse() {
         const formData = new FormData();
         formData.append("file", blob, "frame.jpg");
 
-        const resp = await fetch("/proxy/vision", { method: "POST", body: formData });
+        const resp = await fetch(`${API_BASE}/multimodal/vision`, { method: "POST", body: formData });
         if (!resp.ok) {
             const txt = await resp.text().catch(() => "");
             if (resultEl) resultEl.textContent = `⚠️ Vision analysis failed (${resp.status}): ${txt.slice(0, 120)}`;
@@ -756,10 +759,11 @@ async function startAE1WakeWord(btn, status) {
                 form.append("file", blob, "chunk.webm");
                 form.append("wake_word", "hey baymax");
 
-                const res = await fetch(`${API_BASE}/wakeword`, { method: "POST", body: form });
+                const res = await fetch(`${API_BASE}/stt/transcribe`, { method: "POST", body: form });
                 if (res.ok) {
                     const data = await res.json();
-                    if (data.wake_word_detected) {
+                    const text = data.text ? data.text.toLowerCase() : "";
+                    if (text.includes("baymax") || text.includes("hey")) {
                         if (status) status.textContent = "🔔 Wake word detected! Activating mic...";
                         stopWakeWordDetection();
                         startMicRecording();

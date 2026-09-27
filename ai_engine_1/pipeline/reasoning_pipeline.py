@@ -57,35 +57,48 @@ class MedicalReasoningPipeline:
 
     async def execute_async(self, query: str, user_history: str = "") -> ReasoningPipelineResponse:
         start_time = time.time()
+        from backend.logging.logger import get_logger
+        log = get_logger("ai-engine-1-pipeline")
+
+        log.info(f"[Stage 1/9] Request received | query_len={len(query)}")
 
         # Stage 1 & 2: Intent Classification & Query Planning
         plan = self.planner.plan(query)
+        log.info(f"[Stage 2/9] Query planned | intent={plan.intent} rag_required={plan.rag_required} emergency={plan.emergency_protocol}")
 
         # Stage 3: Tool Execution (if required)
         tool_results = []
         if plan.tool_required:
             for tool_name in plan.recommended_tools:
-                # Example unit conversion or abbreviation check
                 if tool_name == "unit_convert" and "celsius" in query.lower():
                     res = self.tools.execute_tool("unit_converter", value=102, from_unit="Fahrenheit", to_unit="Celsius")
                     tool_results.append(res.dict())
+            log.info(f"[Stage 3/9] Tool execution completed | tools_run={len(tool_results)}")
+        else:
+            log.info("[Stage 3/9] No external tools required")
 
         # Stage 4 & 5: RAG Retrieval & Evidence Ranking
         evidence_docs = []
         evidence_text = "No evidence documents retrieved."
         if plan.rag_required:
+            log.info("[Stage 4/9] RAG retrieval started...")
             try:
                 rag_res = self.rag_pipeline.search(query, top_k=3)
-                evidence_text = rag_res.to_context_string()
-                for r in rag_res.results:
-                    evidence_docs.append({
-                        "content": r.text,
-                        "source_file": r.metadata.get("source", r.collection),
-                        "score": r.score,
-                        "citation": f"[{r.metadata.get('source', r.collection)}]"
-                    })
-            except Exception:
-                pass
+                evidence_text = rag_res.to_context_string() if rag_res else "No evidence documents retrieved."
+                if rag_res and hasattr(rag_res, "results"):
+                    for r in rag_res.results:
+                        evidence_docs.append({
+                            "content": r.text,
+                            "source_file": r.metadata.get("source", r.collection),
+                            "score": r.score,
+                            "citation": f"[{r.metadata.get('source', r.collection)}]"
+                        })
+                log.info(f"[Stage 5/9] RAG retrieval completed | docs_found={len(evidence_docs)}")
+            except Exception as rag_err:
+                log.warning(f"[Stage 5/9] RAG retrieval warning ({rag_err}), continuing without RAG context.")
+                evidence_text = "No evidence documents retrieved."
+        else:
+            log.info("[Stage 4-5/9] RAG not required for this query intent")
 
         # Stage 6: LLM Reasoning
         assembled_prompt = self.prompts.assemble_reasoning_prompt(
@@ -95,13 +108,17 @@ class MedicalReasoningPipeline:
             intent=plan.intent
         )
         system_prompt = self.prompts.get_prompt("system")
+        log.info(f"[Stage 6/9] Prompt constructed | prompt_chars={len(assembled_prompt)} | LLM request starting via {self.llm.active_provider_name}...")
 
         llm_res = await self.llm.generate_async(assembled_prompt, system_prompt=system_prompt)
+        log.info(f"[Stage 6/9] LLM response received | model={llm_res.model_used} latency={llm_res.latency_ms}ms tokens={llm_res.tokens_used}")
 
         # Stage 7: Safety Validation
+        log.info("[Stage 7/9] Validating clinical safety...")
         safety_report = self.safety.validate_safety(query, llm_res.text)
 
         # Stage 8: Confidence Estimation & Explainability
+        log.info("[Stage 8/9] Calculating confidence & citations...")
         confidence_info = self.explainer.calculate_confidence(
             retrieved_docs=evidence_docs,
             safety_warnings=safety_report.warnings,
@@ -117,6 +134,7 @@ class MedicalReasoningPipeline:
             )
 
         latency = (time.time() - start_time) * 1000
+        log.info(f"[Stage 9/9] Final response ready | total_latency={round(latency, 2)}ms")
 
         return ReasoningPipelineResponse(
             query=query,

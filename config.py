@@ -81,6 +81,7 @@ class BaymaxSettings(BaseSettings):
     EMOTION_SMOOTHING_FRAMES: int = 5  # Temporal smoothing window
 
     # ── RAG / Embeddings ──────────────────────────────────────────────────────
+    RAG_ENABLED: bool = True
     EMBEDDING_MODEL: str = "sentence-transformers/all-MiniLM-L6-v2"
     CHUNK_SIZE: int = 512
     CHUNK_OVERLAP: int = 64
@@ -92,21 +93,33 @@ class BaymaxSettings(BaseSettings):
     CHROMA_COLLECTION_GENERAL: str = "general_health"
 
     # ── LLM ───────────────────────────────────────────────────────────────────
-    LLM_MODEL_ID: str = "Qwen/Qwen3-8B-Instruct"
-    LLM_LOAD_IN_4BIT: bool = False  # RTX 5050 8GB → use 8-bit instead
-    LLM_LOAD_IN_8BIT: bool = True   # 8-bit quantization for 8GB VRAM
+    LLM_PROVIDER: str = "lmstudio"  # 'lmstudio', 'qwen_local', 'huggingface', 'omniroute'
+    LMSTUDIO_BASE_URL: str = "http://127.0.0.1:1234"
+    LMSTUDIO_MODEL: str = "local-model"  # Passed to LM Studio
+    LMSTUDIO_TIMEOUT: float = 60.0       # Timeout for Qwen 29B inference
+    LMSTUDIO_ENABLED: bool = True
+    LLM_MODEL_ID: str = "local-model"   # Generic model id or HuggingFace repo
+    LLM_LOAD_IN_4BIT: bool = False      # RTX 5050 8GB → use 8-bit instead
+    LLM_LOAD_IN_8BIT: bool = True       # 8-bit quantization for 8GB VRAM
     LLM_MAX_NEW_TOKENS: int = 512
     LLM_TEMPERATURE: float = 0.7
     LLM_TOP_P: float = 0.9
     LLM_REPETITION_PENALTY: float = 1.1
     LLM_DEVICE_MAP: str = "auto"
-    LLM_TORCH_DTYPE: str = "float16"  # RTX 5050 supports FP16
+    LLM_TORCH_DTYPE: str = "float16"    # RTX 5050 supports FP16
 
-    # ── TTS ───────────────────────────────────────────────────────────────────
+    # ── TTS / Voice ───────────────────────────────────────────────────────────
+    VOICE_ENABLED: bool = True
+    VOICE_PROVIDER: str = "voicebox"    # 'voicebox', 'ae2', 'edge_tts'
     TTS_MODEL: str = "tts_models/multilingual/multi-dataset/xtts_v2"
     TTS_LANGUAGE: str = "en"
     TTS_SAMPLE_RATE: int = 24000
     TTS_STREAMING: bool = True
+    VOICEBOX_BASE_URL: str = "http://127.0.0.1:17493"
+    VOICEBOX_VOICE_PROFILE: str = "Baymax"
+    VOICEBOX_PROFILE_ID: str | None = "2673a1ad-4529-4be8-ab9e-41998bc6ec56"
+    VOICEBOX_TIMEOUT: float = 15.0
+    VOICEBOX_ENABLED: bool = True
 
     # ── Memory ───────────────────────────────────────────────────────────────
     SHORT_TERM_WINDOW: int = 20       # Max messages in short-term memory

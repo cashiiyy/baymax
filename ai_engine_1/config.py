@@ -34,8 +34,14 @@ class EngineConfig(BaseModel):
     chunk_size: int = 500
     chunk_overlap: int = 100
     
+    # LM Studio External Inference Service Settings
+    lmstudio_base_url: str = Field(default_factory=lambda: os.getenv("LMSTUDIO_BASE_URL", "http://127.0.0.1:1234"))
+    lmstudio_model: str = Field(default_factory=lambda: os.getenv("LMSTUDIO_MODEL", os.getenv("LLM_MODEL_ID", "local-model")))
+    lmstudio_timeout: float = Field(default_factory=lambda: float(os.getenv("LMSTUDIO_TIMEOUT", "60.0")))
+    lmstudio_enabled: bool = Field(default_factory=lambda: os.getenv("LMSTUDIO_ENABLED", "true").lower() in ("1", "true", "yes"))
+
     # Local Qwen 2.5 Settings (4-bit quantized, fits 8GB VRAM)
-    llm_provider: str = Field(default_factory=lambda: os.getenv("LLM_PROVIDER", "omniroute"))
+    llm_provider: str = Field(default_factory=lambda: os.getenv("LLM_PROVIDER", "lmstudio"))
     qwen_model: str = Field(default_factory=lambda: os.getenv("QWEN_MODEL", "Qwen/Qwen2.5-7B-Instruct-GPTQ-Int4"))
     qwen_max_new_tokens: int = Field(default_factory=lambda: int(os.getenv("QWEN_MAX_NEW_TOKENS", "512")))
     qwen_temperature: float = Field(default_factory=lambda: float(os.getenv("QWEN_TEMPERATURE", "0.3")))
