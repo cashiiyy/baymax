@@ -33,14 +33,22 @@ class ProductionLLMEngine:
         self.omniroute_url = f"{config.omniroute_base_url}/chat/completions"
         self.ollama_url = f"{config.ollama_base_url}/api/generate"
 
-        # Local Qwen 2.5 provider & LM Studio provider (lazy-initialized)
+        # Provider singletons (lazy-initialized on first call)
         self._qwen_local_provider = None
         self._lmstudio_provider = None
-        self._llm_provider_type = getattr(config, 'llm_provider', 'lmstudio')
-        if self._llm_provider_type == 'lmstudio':
-            logger.info(f"[LLM] Provider selected: LMStudio ({getattr(config, 'lmstudio_model', 'local-model')} @ {getattr(config, 'lmstudio_base_url', 'http://127.0.0.1:1234')})")
+        self._biomistral_provider = None
+        self._llm_provider_type = getattr(config, 'llm_provider', 'biomistral_remote')
+
+        if self._llm_provider_type == 'biomistral_remote':
+            logger.info(
+                f"[LLM] Provider selected: BioMistral-Remote "
+                f"({getattr(config, 'biomistral_model', 'BioMistral-7B')} @ "
+                f"{getattr(config, 'biomistral_base_url', 'http://100.79.169.64:1234')})"
+            )
+        elif self._llm_provider_type == 'lmstudio':
+            logger.info(f"[LLM] Provider selected: LMStudio ({getattr(config, 'lmstudio_model', 'local-model')} @ {getattr(config, 'lmstudio_base_url', 'http://127.0.0.1:1234')}) [ROLLBACK MODE]")
         elif self._llm_provider_type == 'qwen_local':
-            logger.info("[LLM] Provider selected: QwenLocal (4-bit quantized)")
+            logger.info("[LLM] Provider selected: QwenLocal (4-bit quantized) [ROLLBACK MODE]")
         else:
             logger.info(f"[LLM] Provider selected: {self._llm_provider_type}")
 
@@ -65,7 +73,30 @@ class ProductionLLMEngine:
         except Exception:
             pass
 
-        # 1. Try LM Studio External Service if configured as primary
+        # 1. Try BioMistral Remote (AI Engine 2) — Primary provider
+        if self._llm_provider_type == 'biomistral_remote':
+            try:
+                provider = self._get_biomistral_provider()
+                res = await provider.generate(
+                    prompt=prompt,
+                    system_prompt=system_prompt,
+                    temperature=temperature,
+                    max_tokens=max_tokens,
+                )
+                logger.info(f"[LLM] Request handled by provider={res.model_used}")
+                return res
+            except (ConnectionError, TimeoutError) as bm_err:
+                # AI Engine 2 unreachable — raise controlled error, do NOT silently
+                # fall back to Qwen.  Operator must explicitly enable fallback.
+                logger.error(
+                    f"[LLM] BioMistral-Remote failed ({type(bm_err).__name__}: {bm_err}). "
+                    "BioMistral is the primary provider. "
+                    "Triggering OmniRoute gateway fallback."
+                )
+            except Exception as bm_err:
+                logger.warning(f"[LLM] BioMistral-Remote error ({bm_err}), triggering gateway fallback.")
+
+        # 2. Try LM Studio External Service if explicitly configured as primary (ROLLBACK MODE)
         if self._llm_provider_type == 'lmstudio' and getattr(self.config, 'lmstudio_enabled', True):
             try:
                 provider = self._get_lmstudio_provider()
@@ -79,7 +110,7 @@ class ProductionLLMEngine:
             except Exception as lm_err:
                 logger.warning(f"[LLM] LM Studio provider failed ({lm_err}), triggering fallback chain...")
 
-        # 2. Try Local Qwen 2.5 (4-bit quantized) if configured as primary and context length is okay
+        # 3. Try Local Qwen 2.5 (4-bit quantized) if explicitly configured (ROLLBACK MODE)
         if self._llm_provider_type == 'qwen_local' and not is_context_overflow:
             try:
                 provider = self._get_qwen_local_provider()
@@ -266,6 +297,17 @@ class ProductionLLMEngine:
             data = response.json()
             return data.get("response", "").strip()
 
+    def _get_biomistral_provider(self):
+        """Lazy-initialize the BioMistral remote provider singleton."""
+        if self._biomistral_provider is None:
+            from ai_engine_1.llm.provider_biomistral import BioMistralRemoteProvider
+            self._biomistral_provider = BioMistralRemoteProvider(
+                base_url=getattr(self.config, 'biomistral_base_url', 'http://100.79.169.64:1234'),
+                model_id=getattr(self.config, 'biomistral_model', 'BioMistral-7B'),
+                timeout=getattr(self.config, 'biomistral_timeout', 120.0),
+            )
+        return self._biomistral_provider
+
     def _get_lmstudio_provider(self):
         """Lazy-initialize the LM Studio provider singleton."""
         if self._lmstudio_provider is None:
@@ -293,6 +335,9 @@ class ProductionLLMEngine:
     @property
     def active_provider_name(self) -> str:
         """Return the name of the currently configured primary provider."""
+        if self._llm_provider_type == 'biomistral_remote':
+            provider = self._get_biomistral_provider()
+            return provider.provider_name()
         if self._llm_provider_type == 'lmstudio':
             provider = self._get_lmstudio_provider()
             return provider.provider_name()

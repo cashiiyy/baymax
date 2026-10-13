@@ -30,6 +30,7 @@ from app.context.prompt_templates import (
 )
 from app.emotion.deepface_engine import EmotionResult
 from app.memory.memory_manager import FullMemoryContext, MemoryManager
+from app.ml.disease_model import disease_predictor
 from app.rag.pipeline import RAGPipeline
 from app.rag.retriever import MedicalRetrievalResult
 from app.utils.logger import get_logger
@@ -47,6 +48,7 @@ class BuiltContext:
         chat_messages:       Full chat messages list for HF chat template.
         context_block:       The context injection string (for logging/debugging).
         medical_results:     Raw RAG retrieval results.
+        ml_context:          Machine learning clinical reasoning context.
         memory_context:      Full memory context.
         user_message:        Original user message.
         emotion_label:       Detected emotion.
@@ -57,6 +59,7 @@ class BuiltContext:
     chat_messages: List[dict]
     context_block: str
     medical_results: Optional[MedicalRetrievalResult] = None
+    ml_context: str = ""
     memory_context: Optional[FullMemoryContext] = None
     user_message: str = ""
     emotion_label: str = "neutral"
@@ -156,6 +159,22 @@ class ContextBuilder:
             except Exception as exc:
                 log.warning("RAG retrieval failed: {}", exc)
 
+        # ── Step 2.5: Machine Learning Clinical Analysis ──────────────────────
+        ml_context_str = ""
+        try:
+            detected_symptoms = disease_predictor.extract_symptoms(user_message)
+            if detected_symptoms:
+                predictions = disease_predictor.predict(detected_symptoms, top_k=3)
+                ml_context_str = disease_predictor.format_ml_context(detected_symptoms, predictions)
+                top_name = predictions[0].disease if predictions else "None"
+                log.info(
+                    "ML Clinical Reasoning | symptoms={} | top_condition={}",
+                    detected_symptoms,
+                    top_name,
+                )
+        except Exception as ml_err:
+            log.warning("ML Clinical Reasoning failed: {}", ml_err)
+
         # ── Step 3: Memory context ────────────────────────────────────────────
         memory_ctx: Optional[FullMemoryContext] = None
         memory_context_str = ""
@@ -193,6 +212,7 @@ class ContextBuilder:
             is_distressed=is_distressed,
             medical_context=medical_context_str,
             memory_context=memory_context_str,
+            ml_context=ml_context_str,
         )
 
         # ── Step 5: Build chat messages for LLM ───────────────────────────────
@@ -208,6 +228,7 @@ class ContextBuilder:
             chat_messages=chat_messages,
             context_block=context_block,
             medical_results=medical_results,
+            ml_context=ml_context_str,
             memory_context=memory_ctx,
             user_message=user_message,
             emotion_label=emotion_label,

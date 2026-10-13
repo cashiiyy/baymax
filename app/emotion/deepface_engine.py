@@ -104,6 +104,14 @@ class EmotionResult:
     smoothed: EmotionScore
     frame_count: int = 1
 
+    @property
+    def dominant_emotion(self) -> str:
+        return self.smoothed.dominant_emotion if self.smoothed else self.current.dominant_emotion
+
+    @property
+    def face_detected(self) -> bool:
+        return self.smoothed.face_detected if self.smoothed else self.current.face_detected
+
 
 class EmotionEngine:
     """

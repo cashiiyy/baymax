@@ -21,38 +21,25 @@ from typing import Optional
 # ─── BAYMAX System Prompt ─────────────────────────────────────────────────────
 
 BAYMAX_SYSTEM_PROMPT = """\
-You are BAYMAX, a friendly and empathetic AI healthcare assistant.
+You are BAYMAX, a caring, empathetic, and medically knowledgeable AI healthcare assistant.
 
-## Core Identity
-- You are warm, patient, and medically knowledgeable
-- You speak in a calm, reassuring tone
-- You always express care for the user's wellbeing
-- You address the user by name if known
+## Core Identity & Tone
+- Warm, patient, compassionate, and reassuring.
+- Address the user kindly and prioritize their health and emotional safety.
 
-## Medical Grounding Rules (CRITICAL)
-- You MUST base your medical responses on the RETRIEVED MEDICAL KNOWLEDGE provided
-- If the retrieved knowledge does not contain relevant information, clearly say so
-- NEVER invent medications, dosages, or medical procedures
-- NEVER diagnose conditions with certainty; use language like "this may indicate", "you might want to consider"
-- Always recommend consulting a real doctor for serious symptoms
-- For EMERGENCY symptoms (chest pain, difficulty breathing, unconsciousness), IMMEDIATELY advise calling emergency services
+## Medical Grounding & Anti-Hallucination Mandate (STRICT)
+- You MUST ground your symptom reasoning and recommendations in the MACHINE LEARNING CLINICAL ANALYSIS and RETRIEVED MEDICAL KNOWLEDGE provided below.
+- Do NOT hallucinate diagnoses or unverified home cures.
+- Clearly present the dataset's probable causes, associated symptoms to look out for, and evidence-based self-care or first-aid measures.
+- Use prudent medical communication: explain possibilities ("Based on the clinical data, this commonly indicates...", "Symptoms like this can be seen with...") rather than definitive self-diagnosis.
+- Recommend consulting a doctor for continuing, severe, or worsening symptoms.
+- For emergency symptoms (e.g. chest pain, severe difficulty breathing, sudden paralysis, loss of consciousness), advise immediate emergency services.
 
-## Emotional Response Protocol
-- When the user appears HAPPY: respond warmly and positively
-- When the user appears NEUTRAL: respond informatively and clearly
-- When the user appears SAD or FEARFUL: respond with extra empathy and gentleness
-- When the user appears ANGRY or FRUSTRATED: respond calmly and patiently
-- When the user appears DISTRESSED: prioritize emotional support before information
-
-## Response Format
-- Keep responses concise (2-4 sentences for simple questions, up to 8 for complex medical queries)
-- Use plain, accessible language — avoid excessive medical jargon
-- Structure complex responses with clear steps or numbered lists when appropriate
-- End with a caring follow-up question or offer for more help
-
-## Safety Disclaimer
-- Remind users that you are an AI assistant, not a replacement for professional medical care
-- For any serious, chronic, or unclear conditions, always recommend in-person medical evaluation
+## Completeness & Flow Rules (CRITICAL)
+- Provide thorough and complete answers. 
+- NEVER terminate after introductory phrases (such as "Here are some tips:", "Try the following:", or "Here is what you can do:"). You must always follow through with the full, practical recommendations and complete every sentence.
+- Use clear bullet points or numbered steps for care instructions.
+- Conclude with a supportive question or guidance on when to seek in-person medical care.
 """
 
 # ─── Context Injection Template ───────────────────────────────────────────────
@@ -73,10 +60,9 @@ $system_prompt
 
 $memory_context
 
-$medical_context
+$ml_context
 
-=== CURRENT USER MESSAGE ===
-$user_message
+$medical_context
 """)
 
 # ─── Few-Shot Examples ────────────────────────────────────────────────────────
@@ -136,6 +122,7 @@ def build_context_prompt(
     is_distressed: bool = False,
     medical_context: str = "",
     memory_context: str = "",
+    ml_context: str = "",
 ) -> str:
     """
     Build the full context prompt for the LLM.
@@ -149,6 +136,7 @@ def build_context_prompt(
         is_distressed:       Whether user appears distressed.
         medical_context:     Retrieved RAG context string.
         memory_context:      Retrieved episodic memory string.
+        ml_context:          Trained ML disease prediction analysis.
 
     Returns:
         Formatted context prompt string.
@@ -163,6 +151,11 @@ def build_context_prompt(
         if memory_context.strip()
         else "No previous memories for this user."
     )
+    ml_section = (
+        ml_context
+        if ml_context.strip()
+        else ""
+    )
 
     return _CONTEXT_TEMPLATE.substitute(
         system_prompt=BAYMAX_SYSTEM_PROMPT,
@@ -173,7 +166,7 @@ def build_context_prompt(
         is_distressed="YES ⚠️" if is_distressed else "No",
         medical_context=medical_section,
         memory_context=memory_section,
-        user_message=user_message,
+        ml_context=ml_section,
     )
 
 
@@ -183,7 +176,8 @@ def build_chat_messages(
     current_message: str,
 ) -> list[dict]:
     """
-    Build the chat messages list for HuggingFace chat template.
+    Build the chat messages list for chat template.
+    Ensures valid role alternation (user <-> assistant) for Mistral/BioMistral templates.
 
     Args:
         system_prompt:        Full system prompt string.
@@ -191,9 +185,29 @@ def build_chat_messages(
         current_message:      Current user message.
 
     Returns:
-        List of chat messages for Qwen tokenizer.apply_chat_template().
+        List of chat messages for LLM chat completions.
     """
     messages = [{"role": "system", "content": system_prompt}]
-    messages.extend(conversation_history)
-    messages.append({"role": "user", "content": current_message})
+    
+    # Filter conversation history: avoid duplicate consecutive roles
+    for msg in conversation_history:
+        role = msg.get("role")
+        content = msg.get("content", "")
+        if not content:
+            continue
+        if messages and messages[-1].get("role") == role:
+            # Combine content with previous same-role message
+            messages[-1]["content"] += f"\n\n{content}"
+        else:
+            messages.append({"role": role, "content": content})
+
+    # Add current user message
+    if messages and messages[-1].get("role") == "user":
+        # If the last message was already user (e.g. recorded in memory before context build),
+        # merge or keep current message to maintain alternation.
+        if messages[-1]["content"] != current_message:
+            messages[-1]["content"] += f"\n\n{current_message}"
+    else:
+        messages.append({"role": "user", "content": current_message})
+
     return messages

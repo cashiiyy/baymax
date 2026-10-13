@@ -93,7 +93,14 @@ class BaymaxSettings(BaseSettings):
     CHROMA_COLLECTION_GENERAL: str = "general_health"
 
     # ── LLM ───────────────────────────────────────────────────────────────────
-    LLM_PROVIDER: str = "lmstudio"  # 'lmstudio', 'qwen_local', 'huggingface', 'omniroute'
+    LLM_PROVIDER: str = "biomistral_remote"  # 'biomistral_remote', 'lmstudio', 'qwen_local', 'huggingface', 'omniroute'
+    BIOMISTRAL_BASE_URL: str = "http://100.79.169.64:1234"
+    BIOMISTRAL_MODEL: str = "biomistral-7b"
+    BIOMISTRAL_TIMEOUT: float = 120.0
+    BIOMISTRAL_TEMPERATURE: float = 0.3
+    BIOMISTRAL_MAX_TOKENS: int = 1024
+
+    # LM Studio External Inference (Rollback / Fallback Brain)
     LMSTUDIO_BASE_URL: str = "http://127.0.0.1:1234"
     LMSTUDIO_MODEL: str = "local-model"  # Passed to LM Studio
     LMSTUDIO_TIMEOUT: float = 60.0       # Timeout for Qwen 29B inference
@@ -117,8 +124,8 @@ class BaymaxSettings(BaseSettings):
     TTS_STREAMING: bool = True
     VOICEBOX_BASE_URL: str = "http://127.0.0.1:17493"
     VOICEBOX_VOICE_PROFILE: str = "Baymax"
-    VOICEBOX_PROFILE_ID: str | None = "2673a1ad-4529-4be8-ab9e-41998bc6ec56"
-    VOICEBOX_TIMEOUT: float = 15.0
+    VOICEBOX_PROFILE_ID: str | None = "12fd9efc-8da1-4858-866e-1fb02456928d"
+    VOICEBOX_TIMEOUT: float = 90.0
     VOICEBOX_ENABLED: bool = True
 
     # ── Memory ───────────────────────────────────────────────────────────────

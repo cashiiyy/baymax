@@ -71,7 +71,7 @@ def test_config_defaults():
     """EngineConfig should default to a valid configured LLM provider."""
     from ai_engine_1.config import EngineConfig
     config = EngineConfig()
-    assert config.llm_provider in ("lmstudio", "omniroute", "qwen_local")
+    assert config.llm_provider in ("biomistral_remote", "lmstudio", "omniroute", "qwen_local")
     assert config.qwen_model == "Qwen/Qwen2.5-7B-Instruct-GPTQ-Int4"
     assert config.qwen_max_new_tokens == 512
     assert hasattr(config, "lmstudio_base_url")
@@ -84,7 +84,7 @@ def test_llm_engine_default_provider_type():
     """Default ProductionLLMEngine should use configured provider type."""
     from ai_engine_1.llm.llm_engine import ProductionLLMEngine
     engine = ProductionLLMEngine()
-    assert engine._llm_provider_type in ("lmstudio", "omniroute", "qwen_local")
+    assert engine._llm_provider_type in ("biomistral_remote", "lmstudio", "omniroute", "qwen_local")
 
 
 def test_llm_engine_active_provider_name():
@@ -140,7 +140,10 @@ def test_lmstudio_provider_unit():
 def test_llm_engine_offline_fallback():
     """With no API keys and no local model, should fall back to offline."""
     from ai_engine_1.config import EngineConfig
-    config = EngineConfig(omniroute_api_key="")  # No API key
+    config = EngineConfig(
+        omniroute_api_key="",
+        biomistral_base_url="http://127.0.0.1:9999",  # unreachable to trigger offline fallback
+    )
     from ai_engine_1.llm.llm_engine import ProductionLLMEngine
     engine = ProductionLLMEngine(config=config)
 

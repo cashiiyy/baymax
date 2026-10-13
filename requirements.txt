@@ -7,18 +7,21 @@ requests>=2.31.0
 httpx>=0.24.0
 jinja2>=3.1.0
 python-multipart>=0.0.6
+loguru>=0.7.0
 
-# AI & Speech Engine 2 (this machine)
+# Multimodal & Audio Processing
 faster-whisper>=0.10.0
-TTS>=0.22.0
+av>=11.0.0
+soundfile>=0.12.0
 pytesseract>=0.3.10
 opencv-python-headless>=4.8.0
 pillow>=10.0.0
 pymupdf>=1.22.0
 
 # Vector DB & Embeddings
-faiss-cpu>=1.7.4
+chromadb>=0.4.0
 sentence-transformers>=2.2.2
+transformers>=4.35.0
 numpy>=1.24.0
 
 # Task queue & scheduling

@@ -50,10 +50,13 @@ async def lifespan(app: FastAPI):
     
     # Shutdown events
     log.info("Shutting down BAYMAX AI Server")
-    from app.llm.qwen_engine import QwenEngine
+    try:
+        from app.llm.biomistral_engine import BioMistralEngine
+        BioMistralEngine().unload()
+    except Exception as exc:
+        log.warning("Could not unload BioMistralEngine: {}", exc)
     from app.tts.xtts_engine import XTTSEngine
     from app.utils.ae2_client import ae2_client
-    QwenEngine().unload()
     XTTSEngine().unload()
     await ae2_client.close()  # Close AE2 httpx connection pool
 

@@ -12,7 +12,10 @@ from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
 
 from app.context.builder import ContextBuilder
-from app.llm.qwen_engine import QwenEngine
+# BioMistral 7B on AI Engine 2 is the primary LLM provider
+# Rollback: replace BioMistralEngine with QwenEngine and revert the import below
+from app.llm.biomistral_engine import BioMistralEngine
+# from app.llm.qwen_engine import QwenEngine  # ROLLBACK: uncomment this line
 from app.llm.response_parser import ResponseParser
 from app.memory.memory_manager import MemoryManager
 from app.rag.pipeline import RAGPipeline
@@ -27,7 +30,9 @@ router = APIRouter(prefix="/chat", tags=["Full Pipeline"])
 
 # ── Global Module Instances (Lazy Loaded) ──
 rag_pipeline = RAGPipeline()
-qwen_engine = QwenEngine()
+# BioMistral 7B on AI Engine 2 (primary)
+bio_engine = BioMistralEngine()
+# ROLLBACK: replace bio_engine with qwen_engine = QwenEngine()
 response_parser = ResponseParser()
 xtts_engine = XTTSEngine()
 avatar_controller = AvatarController(avatar_ws_manager)
@@ -96,11 +101,37 @@ async def chat_respond(req: ChatRequest):
             user_id=req.user_id
         )
         
-        # 4. Generate LLM Response
-        llm_response = qwen_engine.generate(
-            messages=context.chat_messages,
-            stream=False
-        )
+        # 4. Generate LLM Response via BioMistral on AI Engine 2 (with automatic failover)
+        try:
+            llm_response = await bio_engine._generate_async(
+                messages=context.chat_messages,
+                max_tokens=1024,
+            )
+        except (ConnectionError, TimeoutError, Exception) as llm_err:
+            log.warning("BioMistral inference unavailable ({}), attempting fallback via ProductionLLMEngine...", llm_err)
+            try:
+                from ai_engine_1.llm.llm_engine import ProductionLLMEngine
+                engine1 = ProductionLLMEngine()
+                sys_msg = next((m["content"] for m in context.chat_messages if m["role"] == "system"), None)
+                usr_msg = next((m["content"] for m in reversed(context.chat_messages) if m["role"] == "user"), user_input)
+                eng_res = await engine1.generate_async(prompt=usr_msg, system_prompt=sys_msg)
+                from app.llm.biomistral_engine import LLMResponse
+                llm_response = LLMResponse(
+                    text=eng_res.text,
+                    input_tokens=0,
+                    output_tokens=eng_res.tokens_used,
+                    elapsed_s=eng_res.latency_ms / 1000.0,
+                    provider=eng_res.model_used,
+                )
+            except Exception as fb_err:
+                log.error("All LLM fallbacks failed: {}", fb_err)
+                raise HTTPException(
+                    status_code=503,
+                    detail=(
+                        f"BioMistral inference service unavailable: {llm_err}. "
+                        "AI Engine 2 may be offline or LM Studio is not running."
+                    )
+                )
         
         # 5. Parse Response
         parsed = response_parser.parse(llm_response.text)

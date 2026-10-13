@@ -199,16 +199,15 @@ class RAGPipeline:
     # ── Private Helpers ───────────────────────────────────────────────────────
 
     def _is_already_built(self) -> bool:
-        """Check if any collections already have documents."""
+        """Check if essential collections have documents."""
         from config import settings
 
-        for name in [
+        required = [
             settings.CHROMA_COLLECTION_DISEASE,
             settings.CHROMA_COLLECTION_SYMPTOM,
-        ]:
-            if self.vector_store.collection_exists(name):
-                return True
-        return False
+            settings.CHROMA_COLLECTION_FIRSTAID,
+        ]
+        return all(self.vector_store.collection_exists(name) for name in required)
 
     def _load_processed_file(self, path: Path) -> List[Dict[str, Any]]:
         """Load a processed JSON file."""

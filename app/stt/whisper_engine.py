@@ -188,17 +188,42 @@ class WhisperEngine:
 
     def transcribe_file(self, file_path: str) -> TranscriptionResult:
         """
-        Transcribe an audio file from disk.
+        Transcribe an audio file from disk. Supports webm, ogg, wav, mp3 via PyAV or soundfile.
         """
+        audio = None
+        sr = 16000
+
+        # 1. Try PyAV first (handles webm, opus, ogg, mp4, etc. from browser MediaRecorder)
         try:
-            import soundfile as sf
-            audio, sr = sf.read(file_path, dtype="float32", always_2d=False)
-            if audio.ndim == 2:
-                audio = audio.mean(axis=1)  # Stereo → mono
+            import av
+            with av.open(file_path) as container:
+                resampler = av.audio.resampler.AudioResampler(format="flt", layout="mono", rate=16000)
+                chunks = []
+                for frame in container.decode(audio=0):
+                    resampled_frames = resampler.resample(frame)
+                    for rf in resampled_frames:
+                        chunks.append(rf.to_ndarray())
+                if chunks:
+                    audio = np.concatenate([c.flatten() for c in chunks])
+                    sr = 16000
+        except Exception as av_err:
+            log.debug("PyAV audio decode skipped/failed for {}: {}", file_path, av_err)
+
+        # 2. Fall back to soundfile if PyAV did not produce audio
+        if audio is None or len(audio) == 0:
+            try:
+                import soundfile as sf
+                audio, sr = sf.read(file_path, dtype="float32", always_2d=False)
+                if audio.ndim == 2:
+                    audio = audio.mean(axis=1)  # Stereo → mono
+            except Exception as sf_err:
+                log.warning("soundfile read failed: {}", sf_err)
+
+        if audio is not None and len(audio) > 0:
             return self.transcribe(audio, sample_rate=sr)
-        except Exception as err:
-            log.warning("Local soundfile/whisper transcription unnavailable: {}", err)
-            return TranscriptionResult(text="", language="en", confidence=0.0)
+
+        log.warning("All audio decoders failed for file: {}", file_path)
+        return TranscriptionResult(text="", language="en", confidence=0.0)
 
     def is_loaded(self) -> bool:
         """Return True if the model is currently loaded in memory."""

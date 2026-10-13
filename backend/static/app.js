@@ -339,6 +339,15 @@ function stopMicRecording() {
     isRecording = false;
     const btn = document.getElementById("micBtn");
     if (btn) { btn.classList.remove("recording"); btn.title = "Click to Speak"; }
+
+    // Resume wake word recognition if enabled
+    if (wakeWordActive && wakeWordRecognition) {
+        setTimeout(() => {
+            if (wakeWordActive && !isRecording) {
+                try { wakeWordRecognition.start(); } catch (_) { }
+            }
+        }, 500);
+    }
 }
 
 function cleanupAudioContext() {
@@ -801,17 +810,30 @@ function startBrowserWakeWord(btn, status) {
     wakeWordRecognition.lang = "en-US";
     wakeWordRecognition.interimResults = true;
 
-    wakeWordRecognition.onresult = (event) => {
+    wakeWordRecognition.onresult = async (event) => {
         for (let i = event.resultIndex; i < event.results.length; i++) {
-            const transcript = event.results[i][0].transcript.toLowerCase();
-            if (transcript.includes("hey baymax") || transcript.includes("baymax")) {
-                if (status) status.textContent = "🔔 Wake word detected! Activating mic...";
+            const rawTranscript = event.results[i][0].transcript;
+            const lowerTranscript = rawTranscript.toLowerCase();
+            if (lowerTranscript.includes("hey baymax") || lowerTranscript.includes("baymax")) {
+                // Check if user already spoke their query after "hey baymax"
+                const afterWakeWord = rawTranscript
+                    .replace(/^.*?\b(hey\s+)?baymax\b[,.]?\s*/i, "")
+                    .trim();
 
-                // Stop wake word listening temporarily so audio input isn't locked
+                if (afterWakeWord.length > 2) {
+                    if (status) status.textContent = "🔔 Query detected!";
+                    try { wakeWordRecognition.stop(); } catch (_) { }
+                    appendMessage(afterWakeWord, "user");
+                    await submitQuery(afterWakeWord);
+                    return;
+                }
+
+                // If only wake word detected, activate mic with a brief delay so audio hardware releases
+                if (status) status.textContent = "🔔 Wake word detected! Listening…";
                 try { wakeWordRecognition.stop(); } catch (_) { }
-
-                // Trigger recording
-                toggleMicRecording();
+                setTimeout(() => {
+                    if (!isRecording) startMicRecording();
+                }, 300);
                 break;
             }
         }
@@ -829,7 +851,11 @@ function startBrowserWakeWord(btn, status) {
     wakeWordRecognition.onend = () => {
         // Restart continuously if still active and not recording
         if (wakeWordActive && !isRecording) {
-            try { wakeWordRecognition.start(); } catch (_) { }
+            setTimeout(() => {
+                if (wakeWordActive && !isRecording && wakeWordRecognition) {
+                    try { wakeWordRecognition.start(); } catch (_) { }
+                }
+            }, 300);
         }
     };
 

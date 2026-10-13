@@ -42,8 +42,8 @@ class VoiceboxEngine:
     ) -> None:
         self.base_url = (base_url or getattr(settings, "VOICEBOX_BASE_URL", "http://127.0.0.1:17493")).rstrip("/")
         self.default_profile_name = default_profile_name or getattr(settings, "VOICEBOX_VOICE_PROFILE", "Baymax")
-        self._cached_profile_id = default_profile_id or getattr(settings, "VOICEBOX_PROFILE_ID", "2673a1ad-4529-4be8-ab9e-41998bc6ec56")
-        self.timeout = timeout or float(getattr(settings, "VOICEBOX_TIMEOUT", 30.0))
+        self._cached_profile_id = default_profile_id or getattr(settings, "VOICEBOX_PROFILE_ID", "12fd9efc-8da1-4858-866e-1fb02456928d")
+        self.timeout = timeout or float(getattr(settings, "VOICEBOX_TIMEOUT", 45.0))
         self._profile_cache: Dict[str, str] = {}
         if self._cached_profile_id:
             self._profile_cache[self.default_profile_name.lower()] = self._cached_profile_id
@@ -133,13 +133,16 @@ class VoiceboxEngine:
         if len(target) == 36 and target.count("-") == 4:
             return target
 
-        # Fetch profiles from Voicebox
-        profiles = await self.get_profiles()
-        for p in profiles:
-            if p.get("name", "").lower() == target_lower:
-                pid = p.get("id")
-                self._profile_cache[target_lower] = pid
-                return pid
+        # Fetch fresh profiles from Voicebox to ensure dynamic resolution
+        try:
+            profiles = await self.get_profiles()
+            for p in profiles:
+                if p.get("name", "").lower() == target_lower:
+                    pid = p.get("id")
+                    self._profile_cache[target_lower] = pid
+                    return pid
+        except Exception:
+            pass
 
         # Fallback to cached default
         return self._cached_profile_id
@@ -171,21 +174,43 @@ class VoiceboxEngine:
                 - engine: 'voicebox'
                 - format: 'wav'
         """
-        clean_text = text.strip()
-        if not clean_text:
+        import re
+        # Clean text for speech synthesis (strip markdown, asterisks, emoji, urls)
+        speech_text = re.sub(r"[*#_`>|🚨🩹🫀🦟🩺🐍🌡️🫁📋💡🔥😐🔲👤]", "", text)
+        speech_text = re.sub(r"https?://\S+", "", speech_text)
+        speech_text = re.sub(r"\s+", " ", speech_text).strip()
+
+        # If long, take first 1-2 sentences (max ~28 words) so Voicebox on CPU synthesizes in under 10 seconds
+        words = speech_text.split()
+        if len(words) > 28:
+            sentences = re.split(r"(?<=[.!?])\s+", speech_text)
+            accumulated = []
+            word_count = 0
+            for s in sentences:
+                s_words = s.split()
+                if not accumulated or (word_count + len(s_words) <= 28):
+                    accumulated.append(s)
+                    word_count += len(s_words)
+                else:
+                    break
+            speech_text = " ".join(accumulated).strip()
+            if not speech_text:
+                speech_text = " ".join(words[:25]) + "."
+
+        if not speech_text:
             raise ValueError("Empty text provided for TTS synthesis")
 
         profile_id = await self.resolve_profile_id(profile_name_or_id)
         if not profile_id:
             raise RuntimeError(f"Could not resolve Voicebox profile for '{profile_name_or_id or self.default_profile_name}'")
 
-        log.info("Requesting Voicebox TTS | profile_id={} | text_len={}", profile_id, len(clean_text))
+        log.info("Requesting Voicebox TTS | profile_id={} | text='{}'", profile_id, speech_text[:60])
 
         async with httpx.AsyncClient(timeout=self.timeout) as client:
             # 1. Initiate Generation Request
             payload = {
                 "profile_id": profile_id,
-                "text": clean_text,
+                "text": speech_text,
                 "language": language or "en",
             }
             try:

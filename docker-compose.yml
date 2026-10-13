@@ -5,9 +5,13 @@ services:
     build: .
     container_name: baymax_server
     ports:
+      - "8080:8080"
       - "8000:8000"
     environment:
       - TAILSCALE_IP=100.89.251.123
+      - AE2_TAILSCALE_IP=100.79.169.64
+      - AE2_BASE_URL=http://100.79.169.64:8001
+      - BIOMISTRAL_BASE_URL=http://100.79.169.64:1234
       - BAYMAX_DB_PATH=/app/data/baymax.db
     volumes:
       - ./data:/app/data

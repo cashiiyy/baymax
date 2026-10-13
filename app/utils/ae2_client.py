@@ -127,18 +127,27 @@ class AE2Client:
 
     async def health(self) -> bool:
         """
-        Ping AI Engine 2's /health endpoint.
+        Ping AI Engine 2's /health endpoint with fast timeout.
         Returns True if AE2 is online and healthy.
         """
-        data = await self._get("/health")
-        if data is None:
-            return False
-        status = data.get("status", "")
-        return status in ("ok", "healthy")
+        try:
+            r = await self._get_client().get("/health", headers=self._headers(), timeout=1.5)
+            if r.status_code == 200:
+                data = r.json()
+                return data.get("status") in ("ok", "healthy")
+        except Exception:
+            pass
+        return False
 
     async def status(self) -> Optional[dict]:
-        """Return the full /status response from AE2 (component readiness)."""
-        return await self._get("/status")
+        """Return the full /status response from AE2 with fast timeout."""
+        try:
+            r = await self._get_client().get("/status", headers=self._headers(), timeout=2.0)
+            if r.status_code == 200:
+                return r.json()
+        except Exception:
+            pass
+        return None
 
     async def tts(
         self,
