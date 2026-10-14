@@ -21,7 +21,7 @@ class LLMResponse(BaseModel):
 
 
 class ProductionLLMEngine:
-    """Production LLM Engine with local Qwen 2.5 primary, OmniRoute API, and Gemini fallbacks."""
+    """Production LLM Engine — Gemini API primary, BioMistral-Remote fallback, then OmniRoute / g4f / offline chain."""
 
     def __init__(self, config=None):
         if config is None:
@@ -37,9 +37,17 @@ class ProductionLLMEngine:
         self._qwen_local_provider = None
         self._lmstudio_provider = None
         self._biomistral_provider = None
-        self._llm_provider_type = getattr(config, 'llm_provider', 'biomistral_remote')
+        self._gemini_provider = None
+        self._llm_provider_type = getattr(config, 'llm_provider', 'gemini')
 
-        if self._llm_provider_type == 'biomistral_remote':
+        if self._llm_provider_type == 'gemini':
+            logger.info(
+                f"[LLM] Provider selected: Gemini (primary) "
+                f"model={getattr(config, 'gemini_model', 'gemini-1.5-flash-latest')} "
+                f"| Fallback: BioMistral-Remote @ "
+                f"{getattr(config, 'biomistral_base_url', 'http://100.79.169.64:1234')}"
+            )
+        elif self._llm_provider_type == 'biomistral_remote':
             logger.info(
                 f"[LLM] Provider selected: BioMistral-Remote "
                 f"({getattr(config, 'biomistral_model', 'BioMistral-7B')} @ "
@@ -73,8 +81,29 @@ class ProductionLLMEngine:
         except Exception:
             pass
 
-        # 1. Try BioMistral Remote (AI Engine 2) — Primary provider
-        if self._llm_provider_type == 'biomistral_remote':
+        # 1. Gemini API — Primary provider
+        if self._llm_provider_type == 'gemini':
+            try:
+                provider = self._get_gemini_provider()
+                res = await provider.generate(
+                    prompt=prompt,
+                    system_prompt=system_prompt,
+                    temperature=temperature,
+                    max_tokens=max_tokens,
+                )
+                logger.info(f"[LLM] Request handled by provider={res.model_used}")
+                return res
+            except (ConnectionError, TimeoutError) as g_err:
+                logger.error(
+                    f"[LLM] Gemini primary failed ({type(g_err).__name__}: {g_err}). "
+                    "Triggering BioMistral-Remote fallback."
+                )
+            except Exception as g_err:
+                logger.warning(f"[LLM] Gemini error ({g_err}), triggering BioMistral-Remote fallback.")
+
+        # 2. BioMistral Remote (AI Engine 2) — First fallback
+        #    Also used as primary when LLM_PROVIDER=biomistral_remote (legacy/rollback mode)
+        if self._llm_provider_type in ('gemini', 'biomistral_remote'):
             try:
                 provider = self._get_biomistral_provider()
                 res = await provider.generate(
@@ -84,19 +113,24 @@ class ProductionLLMEngine:
                     max_tokens=max_tokens,
                 )
                 logger.info(f"[LLM] Request handled by provider={res.model_used}")
+                if self._llm_provider_type == 'gemini':
+                    res = LLMResponse(
+                        text=res.text,
+                        model_used=res.model_used,
+                        tokens_used=res.tokens_used,
+                        latency_ms=res.latency_ms,
+                        fallback_triggered=True,
+                    )
                 return res
             except (ConnectionError, TimeoutError) as bm_err:
-                # AI Engine 2 unreachable — raise controlled error, do NOT silently
-                # fall back to Qwen.  Operator must explicitly enable fallback.
                 logger.error(
                     f"[LLM] BioMistral-Remote failed ({type(bm_err).__name__}: {bm_err}). "
-                    "BioMistral is the primary provider. "
                     "Triggering OmniRoute gateway fallback."
                 )
             except Exception as bm_err:
                 logger.warning(f"[LLM] BioMistral-Remote error ({bm_err}), triggering gateway fallback.")
 
-        # 2. Try LM Studio External Service if explicitly configured as primary (ROLLBACK MODE)
+        # 3. Try LM Studio External Service if explicitly configured as primary (ROLLBACK MODE)
         if self._llm_provider_type == 'lmstudio' and getattr(self.config, 'lmstudio_enabled', True):
             try:
                 provider = self._get_lmstudio_provider()
@@ -110,7 +144,7 @@ class ProductionLLMEngine:
             except Exception as lm_err:
                 logger.warning(f"[LLM] LM Studio provider failed ({lm_err}), triggering fallback chain...")
 
-        # 3. Try Local Qwen 2.5 (4-bit quantized) if explicitly configured (ROLLBACK MODE)
+        # 4. Try Local Qwen 2.5 (4-bit quantized) if explicitly configured (ROLLBACK MODE)
         if self._llm_provider_type == 'qwen_local' and not is_context_overflow:
             try:
                 provider = self._get_qwen_local_provider()
@@ -297,6 +331,17 @@ class ProductionLLMEngine:
             data = response.json()
             return data.get("response", "").strip()
 
+    def _get_gemini_provider(self):
+        """Lazy-initialize the Gemini primary provider singleton."""
+        if self._gemini_provider is None:
+            from ai_engine_1.llm.provider_gemini import GeminiProvider
+            self._gemini_provider = GeminiProvider(
+                api_key=getattr(self.config, 'gemini_api_key', None),
+                model_id=getattr(self.config, 'gemini_model', 'gemini-1.5-flash-latest'),
+                timeout=getattr(self.config, 'gemini_timeout', 30.0),
+            )
+        return self._gemini_provider
+
     def _get_biomistral_provider(self):
         """Lazy-initialize the BioMistral remote provider singleton."""
         if self._biomistral_provider is None:
@@ -335,6 +380,9 @@ class ProductionLLMEngine:
     @property
     def active_provider_name(self) -> str:
         """Return the name of the currently configured primary provider."""
+        if self._llm_provider_type == 'gemini':
+            provider = self._get_gemini_provider()
+            return provider.provider_name()
         if self._llm_provider_type == 'biomistral_remote':
             provider = self._get_biomistral_provider()
             return provider.provider_name()

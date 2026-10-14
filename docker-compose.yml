@@ -7,6 +7,8 @@ services:
     ports:
       - "8080:8080"
       - "8000:8000"
+    env_file:
+      - .env
     environment:
       - TAILSCALE_IP=100.89.251.123
       - AE2_TAILSCALE_IP=100.79.169.64
@@ -22,7 +24,7 @@ services:
     image: nginx:alpine
     container_name: baymax_nginx
     ports:
-      - "80:80"
+      - "8081:80"   # host:8081 → nginx:80  (avoids conflict with any existing :80 service)
     volumes:
       - ./nginx/baymax.conf:/etc/nginx/conf.d/default.conf:ro
     depends_on:

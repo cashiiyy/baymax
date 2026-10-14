@@ -40,15 +40,21 @@ class EngineConfig(BaseModel):
     lmstudio_timeout: float = Field(default_factory=lambda: float(os.getenv("LMSTUDIO_TIMEOUT", "60.0")))
     lmstudio_enabled: bool = Field(default_factory=lambda: os.getenv("LMSTUDIO_ENABLED", "true").lower() in ("1", "true", "yes"))
 
-    # BioMistral 7B Remote Inference (AI Engine 2, Tailscale, LM Studio)
-    # Set LLM_PROVIDER=biomistral_remote to activate.
+    # Gemini API — Primary LLM provider
+    # Set LLM_PROVIDER=gemini and GEMINI_API_KEY in .env to activate.
+    gemini_api_key: str = Field(default_factory=lambda: os.getenv("GEMINI_API_KEY", ""))
+    gemini_model: str = Field(default_factory=lambda: os.getenv("GEMINI_MODEL", "gemini-1.5-flash-latest"))
+    gemini_timeout: float = Field(default_factory=lambda: float(os.getenv("GEMINI_TIMEOUT", "30.0")))
+
+    # BioMistral 7B Remote Inference (AI Engine 2, Tailscale, LM Studio) — Fallback
+    # Set LLM_PROVIDER=biomistral_remote to use as primary (legacy/rollback mode).
     biomistral_base_url: str = Field(default_factory=lambda: os.getenv("BIOMISTRAL_BASE_URL", "http://100.79.169.64:1234"))
     biomistral_model: str = Field(default_factory=lambda: os.getenv("BIOMISTRAL_MODEL", "BioMistral-7B"))
     biomistral_timeout: float = Field(default_factory=lambda: float(os.getenv("BIOMISTRAL_TIMEOUT", "120.0")))
 
     # Active LLM provider selector
-    # Supported: 'biomistral_remote' (primary), 'lmstudio' (rollback), 'qwen_local' (rollback)
-    llm_provider: str = Field(default_factory=lambda: os.getenv("LLM_PROVIDER", "biomistral_remote"))
+    # Supported: 'gemini' (primary), 'biomistral_remote' (fallback/legacy), 'lmstudio' (rollback), 'qwen_local' (rollback)
+    llm_provider: str = Field(default_factory=lambda: os.getenv("LLM_PROVIDER", "gemini"))
     qwen_model: str = Field(default_factory=lambda: os.getenv("QWEN_MODEL", "Qwen/Qwen2.5-7B-Instruct-GPTQ-Int4"))
     qwen_max_new_tokens: int = Field(default_factory=lambda: int(os.getenv("QWEN_MAX_NEW_TOKENS", "512")))
     qwen_temperature: float = Field(default_factory=lambda: float(os.getenv("QWEN_TEMPERATURE", "0.3")))
